@@ -1,5 +1,5 @@
 export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8005";
+  import.meta.env.VITE_API_BASE_URL || "http://192.168.1.10:8005";
 
 /** GET JSON from the API. */
 async function get<T>(path: string): Promise<T> {
