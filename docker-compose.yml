@@ -4,10 +4,10 @@ services:
     container_name: homecam-backend
     ports:
       - "8005:8000"
-    devices:
-      - "/dev/video0:/dev/video0"
+    privileged: true
     volumes:
       - ./recordings:/recordings
+      - /dev:/dev
     restart: unless-stopped
     environment:
       - CAMERA_DEVICE=/dev/video0
