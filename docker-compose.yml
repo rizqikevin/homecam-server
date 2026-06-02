@@ -14,6 +14,16 @@ services:
       - RECORDINGS_DIR=/recordings
       - MOCK_CAMERA=false
       - TZ=Asia/Jakarta
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -f http://localhost:8000/ || wget --spider -q http://localhost:8000/ || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   frontend:
     build:
@@ -28,3 +38,13 @@ services:
     restart: unless-stopped
     environment:
       - TZ=Asia/Jakarta
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -f http://localhost:3000/ || wget --spider -q http://localhost:3000/ || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
