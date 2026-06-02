@@ -356,7 +356,7 @@ class CameraManager:
             os.makedirs(self.recordings_dir, exist_ok=True)
 
             try:
-                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                fourcc = cv2.VideoWriter_fourcc(*"avc1")
                 self._writer = cv2.VideoWriter(
                     filepath, fourcc, float(self.fps), (self.width, self.height)
                 )
