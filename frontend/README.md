@@ -20,7 +20,7 @@ This is the lightweight Progressive Web App (PWA) dashboard for HomeCam Server, 
 - **Style System**: Modern Vanilla CSS with HSL variables (dark mode first).
 - **Service Worker**: Custom `sw.js` in the `public` directory using a dynamic **Cache-First** strategy for static files and bypassing caching for the `/api/camera/stream` endpoint.
 - **PWA Manifest**: Configured in `public/manifest.webmanifest`.
-- **API Proxy/Target**: Centralized in `src/api.ts`, using environment variable `VITE_API_BASE_URL` with a default fallback of `http://192.168.1.10:8005`.
+- **API Proxy/Target**: Centralized in `src/api.ts`, using environment variable `VITE_API_BASE_URL` with a default fallback of `https://api.rizqikevin.my.id`.
 
 ## Development & Build
 
