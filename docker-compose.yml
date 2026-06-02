@@ -1,0 +1,27 @@
+services:
+  backend:
+    build: ./backend
+    container_name: homecam-backend
+    ports:
+      - "8005:8000"
+    devices:
+      - "/dev/video0:/dev/video0"
+    volumes:
+      - ./recordings:/recordings
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Jakarta
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ""
+    container_name: homecam-frontend
+    ports:
+      - "3005:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Jakarta
