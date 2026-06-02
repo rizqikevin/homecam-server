@@ -1,61 +1,78 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useApp } from "../context/AppContext";
 import { api } from "../api";
-import type { CameraStatus, HealthStatus } from "../api";
 
 export default function Dashboard() {
-  const [health, setHealth] = useState<HealthStatus | null>(null);
-  const [camera, setCamera] = useState<CameraStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const {
+    health,
+    camera,
+    backendOnline,
+    cameraOnline,
+    isRecording,
+    motionDetected,
+    setIsRecording,
+    triggerRefresh,
+    loading,
+    error,
+  } = useApp();
+
   const [actionLoading, setActionLoading] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchStatus = async () => {
-    try {
-      const [h, c] = await Promise.all([
-        api.getHealth(),
-        api.getCameraStatus(),
-      ]);
-      setHealth(h);
-      setCamera(c);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to connect");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Handle Recording Timer
   useEffect(() => {
-    fetchStatus();
-    intervalRef.current = setInterval(fetchStatus, 5000);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
+    if (isRecording) {
+      setRecordingSeconds(0);
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingSeconds((prev) => prev + 1);
+      }, 1000);
+    } else {
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
+      }
+      setRecordingSeconds(0);
+    }
 
-  const handleStart = async () => {
+    return () => {
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+      }
+    };
+  }, [isRecording]);
+
+  const handleStartCamera = async () => {
     setActionLoading(true);
     try {
       await api.startCamera();
-      await fetchStatus();
+      await triggerRefresh();
     } catch {
-      setError("Failed to start camera");
+      // Handled in Context
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleStop = async () => {
+  const handleStopCamera = async () => {
     setActionLoading(true);
     try {
+      // If we are recording, stop recording first
+      if (isRecording) {
+        setIsRecording(false);
+      }
       await api.stopCamera();
-      await fetchStatus();
+      await triggerRefresh();
     } catch {
-      setError("Failed to stop camera");
+      // Handled in Context
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const toggleRecording = () => {
+    setIsRecording(!isRecording);
   };
 
   const formatUptime = (seconds: number): string => {
@@ -65,6 +82,12 @@ export default function Dashboard() {
     if (h > 0) return `${h}h ${m}m ${s}s`;
     if (m > 0) return `${m}m ${s}s`;
     return `${s}s`;
+  };
+
+  const formatTimer = (totalSeconds: number): string => {
+    const m = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
+    const s = (totalSeconds % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
   };
 
   if (loading) {
@@ -78,111 +101,227 @@ export default function Dashboard() {
     );
   }
 
+  // Graceful Offline Fallback State
+  if (!backendOnline) {
+    return (
+      <div className="page">
+        <div className="offline-hero">
+          <div className="offline-hero-icon">⚠️</div>
+          <h2>CCTV Backend Offline</h2>
+          <p>
+            Could not connect to the HomeCam backend at the configured address.
+            Please verify the server is running and accessible on your local network.
+          </p>
+          {error && <div className="error-banner">{error}</div>}
+          <button className="btn btn-primary" onClick={triggerRefresh}>
+            🔄 Retry Connection
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="page">
+    <div className={`page ${isFullscreen ? "page-with-fullscreen" : ""}`}>
       <div className="page-header">
-        <h1>Live Dashboard</h1>
+        <div className="title-area">
+          <h1>Live Dashboard</h1>
+          <p className="page-subtitle">Real-time CCTV feed and camera diagnostics</p>
+        </div>
         {error && <div className="error-banner">{error}</div>}
       </div>
 
-      {/* Status Cards */}
+      {/* Main Status Grid */}
       <div className="status-grid">
-        <div className={`status-card ${health ? "status-online" : "status-offline"}`}>
+        {/* Backend Status */}
+        <div className={`status-card ${backendOnline ? "status-online" : "status-offline"}`}>
           <div className="status-icon">
-            <span className={`dot ${health ? "dot-green" : "dot-red"}`} />
+            <span className={`dot ${backendOnline ? "dot-green" : "dot-red"}`} />
           </div>
           <div className="status-info">
             <span className="status-label">Backend</span>
-            <span className="status-value">{health ? "Online" : "Offline"}</span>
+            <span className="status-value">{backendOnline ? "Online" : "Offline"}</span>
           </div>
         </div>
 
-        <div className={`status-card ${camera?.status === "online" ? "status-online" : "status-offline"}`}>
+        {/* Camera Status */}
+        <div
+          className={`status-card ${
+            cameraOnline
+              ? "status-online"
+              : camera?.status === "error"
+              ? "status-error"
+              : "status-offline"
+          }`}
+        >
           <div className="status-icon">
-            <span className={`dot ${camera?.status === "online" ? "dot-green" : "dot-red"}`} />
+            <span
+              className={`dot ${
+                cameraOnline
+                  ? "dot-green"
+                  : camera?.status === "error"
+                  ? "dot-red"
+                  : "dot-grey"
+              }`}
+            />
           </div>
           <div className="status-info">
             <span className="status-label">Camera</span>
             <span className="status-value">
-              {camera?.status === "online" ? "Online" : camera?.status === "error" ? "Error" : "Offline"}
+              {camera?.status === "online"
+                ? "Online"
+                : camera?.status === "error"
+                ? "Error"
+                : "Offline"}
             </span>
           </div>
         </div>
 
-        <div className="status-card">
-          <div className="status-icon">⏱</div>
+        {/* Recording Status */}
+        <div className={`status-card ${isRecording ? "status-active-rec" : ""}`}>
+          <div className="status-icon">
+            <span className={`dot-recording ${isRecording ? "active" : "inactive"}`} />
+          </div>
           <div className="status-info">
-            <span className="status-label">Uptime</span>
-            <span className="status-value">
-              {health ? formatUptime(health.uptime_seconds) : "—"}
-            </span>
+            <span className="status-label">Recording</span>
+            <span className="status-value">{isRecording ? "Active" : "Inactive"}</span>
           </div>
         </div>
 
-        <div className="status-card">
-          <div className="status-icon">📷</div>
+        {/* Motion Detection Status */}
+        <div className={`status-card ${motionDetected ? "status-active-motion" : ""}`}>
+          <div className="status-icon">
+            <span className={`dot-motion ${motionDetected ? "active" : "inactive"}`} />
+          </div>
           <div className="status-info">
-            <span className="status-label">Resolution</span>
-            <span className="status-value">{camera?.resolution || "—"}</span>
+            <span className="status-label">Motion Sensor</span>
+            <span className="status-value">{motionDetected ? "Detected" : "Idle"}</span>
           </div>
         </div>
       </div>
 
-      {/* Live Stream */}
-      <div className="stream-container">
+      {/* Stream Viewport Container */}
+      <div className={`stream-container ${isFullscreen ? "fullscreen" : ""}`}>
         <div className="stream-header">
-          <h2>Live Feed</h2>
+          <div className="stream-header-title">
+            <h2>Live Camera Feed</h2>
+            {isRecording && (
+              <span className="live-rec-badge">
+                <span className="blink-dot" /> REC {formatTimer(recordingSeconds)}
+              </span>
+            )}
+            {motionDetected && <span className="live-motion-badge">⚠️ MOTION</span>}
+          </div>
           <div className="stream-controls">
+            {cameraOnline && (
+              <button
+                className={`btn ${isRecording ? "btn-danger" : "btn-primary"}`}
+                onClick={toggleRecording}
+              >
+                {isRecording ? "⏹ Stop Rec" : "● Manual Rec"}
+              </button>
+            )}
             <button
-              className="btn btn-success"
-              onClick={handleStart}
-              disabled={actionLoading || camera?.status === "online"}
+              className="btn btn-secondary btn-icon-only"
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              title={isFullscreen ? "Exit Fullscreen" : "Fullscreen View"}
             >
-              ▶ Start
-            </button>
-            <button
-              className="btn btn-danger"
-              onClick={handleStop}
-              disabled={actionLoading || camera?.status !== "online"}
-            >
-              ⏹ Stop
+              {isFullscreen ? "🗖" : "🗖"}
             </button>
           </div>
         </div>
 
         <div className="stream-viewport">
-          {camera?.status === "online" ? (
+          {cameraOnline ? (
             <img
               src={api.getStreamUrl()}
               alt="Live camera feed"
               className="stream-img"
+              onDoubleClick={() => setIsFullscreen(!isFullscreen)}
             />
           ) : (
             <div className="stream-offline">
               <div className="offline-icon">📷</div>
-              <p>Camera is {camera?.status || "offline"}</p>
-              {camera?.error && (
-                <p className="offline-error">{camera.error}</p>
-              )}
+              <p>Camera stream is offline</p>
+              {camera?.error && <p className="offline-error">{camera.error}</p>}
               <button
                 className="btn btn-primary"
-                onClick={handleStart}
+                onClick={handleStartCamera}
                 disabled={actionLoading}
               >
-                Start Camera
+                ▶ Start Camera Device
               </button>
+            </div>
+          )}
+
+          {/* Fullscreen Overlay HUD */}
+          {isFullscreen && (
+            <div className="fullscreen-hud">
+              <div className="hud-top">
+                <div className="hud-brand">
+                  <span className="hud-dot" /> LIVE CAMERA — Front Gate
+                </div>
+                <div className="hud-status">
+                  {isRecording && (
+                    <span className="hud-badge-rec">● REC {formatTimer(recordingSeconds)}</span>
+                  )}
+                  {motionDetected && <span className="hud-badge-motion">MOTION</span>}
+                </div>
+              </div>
+              <div className="hud-bottom">
+                <div className="hud-controls">
+                  <button
+                    className="btn btn-danger"
+                    onClick={handleStopCamera}
+                    disabled={actionLoading}
+                  >
+                    Turn Off
+                  </button>
+                  {isRecording ? (
+                    <button className="btn btn-danger" onClick={toggleRecording}>
+                      Stop Rec
+                    </button>
+                  ) : (
+                    <button className="btn btn-primary" onClick={toggleRecording}>
+                      Record
+                    </button>
+                  )}
+                  <button className="btn btn-secondary" onClick={() => setIsFullscreen(false)}>
+                    Close
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
       </div>
 
+      {/* Camera Operation controls */}
+      {cameraOnline && (
+        <div className="details-card control-panel-card">
+          <h3>Camera Controls</h3>
+          <div className="controls-grid">
+            <button
+              className="btn btn-danger"
+              onClick={handleStopCamera}
+              disabled={actionLoading}
+            >
+              ⏹ Stop Camera Device
+            </button>
+            <button className="btn btn-secondary" onClick={triggerRefresh}>
+              🔄 Refresh Status
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Camera Details */}
       {camera && (
         <div className="details-card">
-          <h3>Camera Details</h3>
+          <h3>Camera Device Details</h3>
           <div className="details-grid">
             <div className="detail-item">
-              <span className="detail-label">Device</span>
+              <span className="detail-label">Device Path</span>
               <span className="detail-value">{camera.device}</span>
             </div>
             <div className="detail-item">
@@ -190,15 +329,13 @@ export default function Dashboard() {
               <span className="detail-value">{camera.resolution}</span>
             </div>
             <div className="detail-item">
-              <span className="detail-label">FPS</span>
-              <span className="detail-value">{camera.fps}</span>
+              <span className="detail-label">Framerate</span>
+              <span className="detail-value">{camera.fps} FPS</span>
             </div>
             <div className="detail-item">
-              <span className="detail-label">Started At</span>
+              <span className="detail-label">Uptime</span>
               <span className="detail-value">
-                {camera.started_at
-                  ? new Date(camera.started_at).toLocaleString()
-                  : "—"}
+                {health ? formatUptime(health.uptime_seconds) : "—"}
               </span>
             </div>
           </div>

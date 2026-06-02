@@ -1,5 +1,14 @@
-export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://192.168.1.10:8005";
+const getApiBaseUrl = (): string => {
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  // If envUrl is explicitly provided (even if it's empty, representing proxy), use it.
+  if (envUrl !== undefined && envUrl !== null) {
+    return envUrl;
+  }
+  // Default production API URL fallback
+  return "http://192.168.1.10:8005";
+};
+
+export const API_BASE_URL = getApiBaseUrl();
 
 /** GET JSON from the API. */
 async function get<T>(path: string): Promise<T> {

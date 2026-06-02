@@ -1,73 +1,55 @@
-# React + TypeScript + Vite
+# HomeCam Server — PWA Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This is the lightweight Progressive Web App (PWA) dashboard for HomeCam Server, designed to monitor and control local home CCTV webcam streams.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **PWA Installability**: Fully installable on Android, iOS, and Desktop devices with correct branding (`HomeCam Server`).
+- **Offline Shell**: Static assets are cached locally using a custom Service Worker, allowing the app to load instantly even without network.
+- **Smart Stream Handling**: Live camera streams are never cached by the Service Worker, ensuring real-time playback.
+- **Dynamic Connection Management**: Displaying explicit "Backend offline" indicators and retry procedures if the API is unreachable.
+- **Responsive Layout**: Adapts perfectly to various screen sizes.
+  - **Desktop**: A persistent sidebar with system logs and navigation links.
+  - **Mobile/PWA**: Bottom navigation tabs and a top status header conforming to safe-areas (notches/home indicators).
+- **Fullscreen Immersive View**: Double-tap the live stream or click the fullscreen button to view the CCTV feed in full screen overlay HUD.
 
-## React Compiler
+## Technical Architecture
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Framework**: React 19 + TypeScript + Vite 8
+- **Routing**: React Router 7
+- **Style System**: Modern Vanilla CSS with HSL variables (dark mode first).
+- **Service Worker**: Custom `sw.js` in the `public` directory using a dynamic **Cache-First** strategy for static files and bypassing caching for the `/api/camera/stream` endpoint.
+- **PWA Manifest**: Configured in `public/manifest.webmanifest`.
+- **API Proxy/Target**: Centralized in `src/api.ts`, using environment variable `VITE_API_BASE_URL` with a default fallback of `http://192.168.1.10:8005`.
 
-## Expanding the ESLint configuration
+## Development & Build
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Prerequisites
+- Node.js 22+
+- `pnpm` (Package Manager)
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Install dependencies
+```bash
+pnpm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Dev Server
+```bash
+pnpm run dev
 ```
+
+### Build Production Bundle
+```bash
+pnpm run build
+```
+
+## Docker Production Deployment
+
+The production build runs in a multi-stage Docker environment and is served by a Node static server (not using Nginx/Vite preview) on port `3000`.
+
+- Build Stage: Uses `pnpm` to compile TypeScript and create a optimized production build in `dist/`.
+- Production Stage: Runs a lightweight Alpine Node environment using the `serve` library.
+
+### Port Mappings
+- Container Port: `3000`
+- Host Port Mapping: `3005` (Accessible at `http://192.168.1.10:3005`)
