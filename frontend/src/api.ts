@@ -5,7 +5,7 @@ const getApiBaseUrl = (): string => {
     return envUrl;
   }
   // Default production API URL fallback (since served on 3005 and API is on 8005, it is not proxied)
-  return "http://192.168.1.10:8005";
+  return "https://api.rizqikevin.my.id";
 };
 
 export const API_BASE_URL = getApiBaseUrl();
@@ -118,20 +118,27 @@ export const api = {
   startCamera: () => post<{ message: string }>("/api/camera/start"),
   stopCamera: () => post<{ message: string }>("/api/camera/stop"),
   getStreamUrl: () => `${API_BASE_URL}/api/camera/stream`,
-  
+
   // Settings API
   getSettings: () => get<SettingsData>("/api/settings"),
-  patchSettings: (data: Partial<SettingsData>) => patch<SettingsData>("/api/settings", data),
-  
+  patchSettings: (data: Partial<SettingsData>) =>
+    patch<SettingsData>("/api/settings", data),
+
   // Manual Recording Controls
-  startManualRecording: () => post<{ message: string; filename: string }>("/api/recordings/start"),
-  stopManualRecording: () => post<{ message: string; filename: string }>("/api/recordings/stop"),
-  
+  startManualRecording: () =>
+    post<{ message: string; filename: string }>("/api/recordings/start"),
+  stopManualRecording: () =>
+    post<{ message: string; filename: string }>("/api/recordings/stop"),
+
   // Recordings API
-  getRecordings: () => get<{ items: RecordingItem[]; total: number }>("/api/recordings"),
-  deleteRecording: (filename: string) => del<{ message: string; filename: string }>(`/api/recordings/${filename}`),
-  getPlaybackUrl: (filename: string) => `${API_BASE_URL}/api/recordings/${filename}`,
-  getDownloadUrl: (filename: string) => `${API_BASE_URL}/api/recordings/${filename}?download=true`,
+  getRecordings: () =>
+    get<{ items: RecordingItem[]; total: number }>("/api/recordings"),
+  deleteRecording: (filename: string) =>
+    del<{ message: string; filename: string }>(`/api/recordings/${filename}`),
+  getPlaybackUrl: (filename: string) =>
+    `${API_BASE_URL}/api/recordings/${filename}`,
+  getDownloadUrl: (filename: string) =>
+    `${API_BASE_URL}/api/recordings/${filename}?download=true`,
 
   // Server Diagnostics
   getServerInfo: () => get<ServerInfo>("/api/server/info"),
