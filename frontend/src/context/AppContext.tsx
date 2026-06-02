@@ -1,30 +1,33 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { api } from "../api";
-import type { CameraStatus, HealthStatus } from "../api";
+import type { CameraStatus, HealthStatus, SettingsData, ServerInfo } from "../api";
 
-interface AppSettings {
-  motionDetectionEnabled: boolean;
-  autoRecord: boolean;
-  sensitivity: "low" | "medium" | "high";
-  fpsLimit: number;
+export interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: string[];
+  readonly userChoice: Promise<{
+    outcome: "accepted" | "dismissed";
+    platform: string;
+  }>;
+  prompt(): Promise<void>;
 }
 
 interface AppContextType {
   health: HealthStatus | null;
   camera: CameraStatus | null;
+  serverInfo: ServerInfo | null;
+  settings: SettingsData | null;
   backendOnline: boolean;
   cameraOnline: boolean;
   isRecording: boolean;
   motionDetected: boolean;
-  settings: AppSettings;
-  updateSettings: (newSettings: Partial<AppSettings>) => void;
-  setIsRecording: (recording: boolean) => void;
-  triggerRefresh: () => Promise<void>;
   loading: boolean;
   error: string | null;
-  deferredPrompt: any;
+  deferredPrompt: BeforeInstallPromptEvent | null;
   isInstallable: boolean;
   promptInstall: () => void;
+  updateSettings: (newSettings: Partial<SettingsData>) => Promise<void>;
+  triggerRefresh: () => Promise<void>;
+  fetchServerInfo: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -40,58 +43,46 @@ export const useApp = () => {
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [camera, setCamera] = useState<CameraStatus | null>(null);
+  const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
+  const [settings, setSettings] = useState<SettingsData | null>(null);
+  
   const [backendOnline, setBackendOnline] = useState<boolean>(false);
   const [cameraOnline, setCameraOnline] = useState<boolean>(false);
-  const [isRecording, setIsRecordingState] = useState<boolean>(false);
+  const [isRecording, setIsRecording] = useState<boolean>(false);
   const [motionDetected, setMotionDetected] = useState<boolean>(false);
+  
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // PWA Install properties
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  // PWA properties
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstallable, setIsInstallable] = useState<boolean>(false);
 
-  // Settings state persisted to localStorage
-  const [settings, setSettings] = useState<AppSettings>(() => {
-    const saved = localStorage.getItem("homecam_settings");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        // use default
-      }
-    }
-    return {
-      motionDetectionEnabled: true,
-      autoRecord: true,
-      sensitivity: "medium",
-      fpsLimit: 15,
-    };
-  });
-
-  const updateSettings = (newSettings: Partial<AppSettings>) => {
-    setSettings((prev) => {
-      const updated = { ...prev, ...newSettings };
-      localStorage.setItem("homecam_settings", JSON.stringify(updated));
-      return updated;
-    });
-  };
-
-  const setIsRecording = (recording: boolean) => {
-    setIsRecordingState(recording);
-    localStorage.setItem("homecam_is_recording", recording ? "true" : "false");
-  };
-
-  // Load recording state
-  useEffect(() => {
-    const savedRecording = localStorage.getItem("homecam_is_recording");
-    if (savedRecording === "true") {
-      setIsRecordingState(true);
+  // Load initial settings and server info
+  const loadInitialData = useCallback(async () => {
+    try {
+      const [s, info] = await Promise.all([
+        api.getSettings(),
+        api.getServerInfo()
+      ]);
+      setSettings(s);
+      setServerInfo(info);
+    } catch (err) {
+      logger.error("Failed to load settings or server info:", err);
     }
   }, []);
 
-  // Fetch API status
-  const fetchStatus = async () => {
+  const fetchServerInfo = useCallback(async () => {
+    try {
+      const info = await api.getServerInfo();
+      setServerInfo(info);
+    } catch (err) {
+      console.error("Failed to fetch server info:", err);
+    }
+  }, []);
+
+  // Poll camera/health status
+  const fetchStatus = useCallback(async () => {
     try {
       const [h, c] = await Promise.all([
         api.getHealth(),
@@ -101,63 +92,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCamera(c);
       setBackendOnline(true);
       setCameraOnline(c.status === "online");
+      setIsRecording(c.recording);
+      setMotionDetected(c.motion_detected);
       setError(null);
     } catch (err) {
       setHealth(null);
       setCamera(null);
       setBackendOnline(false);
       setCameraOnline(false);
+      setIsRecording(false);
+      setMotionDetected(false);
       setError(err instanceof Error ? err.message : "Backend connection lost");
     } finally {
       setLoading(false);
     }
-  };
-
-  const triggerRefresh = async () => {
-    setLoading(true);
-    await fetchStatus();
-  };
-
-  // Poll status every 5 seconds
-  useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
   }, []);
 
-  // Simulate Motion Detection if enabled
+  const triggerRefresh = useCallback(async () => {
+    setLoading(true);
+    await Promise.all([fetchStatus(), loadInitialData()]);
+  }, [fetchStatus, loadInitialData]);
+
+  // Run on mount
   useEffect(() => {
-    if (!settings.motionDetectionEnabled || !cameraOnline) {
-      setMotionDetected(false);
-      return;
-    }
-
-    const interval = setInterval(() => {
-      // 15% chance to toggle motion when online
-      const shouldDetect = Math.random() < 0.15;
-      setMotionDetected((prev) => {
-        const next = shouldDetect ? !prev : prev;
-        
-        // Auto-record if motion is detected and auto-record is enabled
-        if (next && settings.autoRecord && !isRecording) {
-          setIsRecording(true);
-          // Auto-stop recording after 10 seconds of motion
-          setTimeout(() => {
-            setIsRecording(false);
-          }, 10000);
-        }
-        return next;
-      });
-    }, 4000);
-
+    // Call checkers directly instead of triggerRefresh() to avoid setting loading=true synchronously on mount
+    fetchStatus();
+    loadInitialData();
+    
+    // Poll status every 2 seconds as requested for real-time responsiveness
+    const interval = setInterval(fetchStatus, 2000);
     return () => clearInterval(interval);
-  }, [settings.motionDetectionEnabled, settings.autoRecord, cameraOnline, isRecording]);
+  }, [fetchStatus, loadInitialData]);
+
+  // Update Settings via API
+  const updateSettings = useCallback(async (newSettings: Partial<SettingsData>) => {
+    try {
+      const updated = await api.patchSettings(newSettings);
+      setSettings(updated);
+      await fetchServerInfo();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to save settings";
+      throw new Error(msg, { cause: err });
+    }
+  }, [fetchServerInfo]);
 
   // Handle PWA installation trigger
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
-      setDeferredPrompt(e);
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
       setIsInstallable(true);
     };
 
@@ -183,24 +166,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Add logger support for context debugging
+  const logger = {
+    error: (...args: unknown[]) => console.error("[AppContext]", ...args),
+    info: (...args: unknown[]) => console.log("[AppContext]", ...args)
+  };
+
   return (
     <AppContext.Provider
       value={{
         health,
         camera,
+        serverInfo,
+        settings,
         backendOnline,
         cameraOnline,
         isRecording,
         motionDetected,
-        settings,
-        updateSettings,
-        setIsRecording,
-        triggerRefresh,
         loading,
         error,
         deferredPrompt,
         isInstallable,
         promptInstall,
+        updateSettings,
+        triggerRefresh,
+        fetchServerInfo,
       }}
     >
       {children}

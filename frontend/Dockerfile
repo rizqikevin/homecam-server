@@ -3,14 +3,18 @@ FROM node:22-alpine AS build
 
 WORKDIR /app
 
+RUN npm install -g pnpm
+RUN pnpm config set trust-lockfile true
+RUN pnpm config set minimum-release-age 0
+
 ARG VITE_API_BASE_URL=http://192.168.1.10:8005
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 COPY . .
-RUN npm run build
+RUN pnpm run build
 
 
 # Stage 2: Production static server

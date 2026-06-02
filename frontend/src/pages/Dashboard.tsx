@@ -10,7 +10,6 @@ export default function Dashboard() {
     cameraOnline,
     isRecording,
     motionDetected,
-    setIsRecording,
     triggerRefresh,
     loading,
     error,
@@ -58,10 +57,6 @@ export default function Dashboard() {
   const handleStopCamera = async () => {
     setActionLoading(true);
     try {
-      // If we are recording, stop recording first
-      if (isRecording) {
-        setIsRecording(false);
-      }
       await api.stopCamera();
       await triggerRefresh();
     } catch {
@@ -71,8 +66,20 @@ export default function Dashboard() {
     }
   };
 
-  const toggleRecording = () => {
-    setIsRecording(!isRecording);
+  const toggleRecording = async () => {
+    setActionLoading(true);
+    try {
+      if (isRecording) {
+        await api.stopManualRecording();
+      } else {
+        await api.startManualRecording();
+      }
+      await triggerRefresh();
+    } catch {
+      // Error handling
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const formatUptime = (seconds: number): string => {
