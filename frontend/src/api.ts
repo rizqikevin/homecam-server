@@ -1,10 +1,10 @@
 const getApiBaseUrl = (): string => {
   const envUrl = import.meta.env.VITE_API_BASE_URL;
-  // If envUrl is explicitly provided (even if it's empty, representing proxy), use it.
-  if (envUrl !== undefined && envUrl !== null) {
+  // If envUrl is explicitly provided and is NOT an empty string, use it.
+  if (envUrl && envUrl.trim() !== "") {
     return envUrl;
   }
-  // Default production API URL fallback
+  // Default production API URL fallback (since served on 3005 and API is on 8005, it is not proxied)
   return "http://192.168.1.10:8005";
 };
 
