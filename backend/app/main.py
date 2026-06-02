@@ -10,6 +10,7 @@ import os
 import json
 import glob
 import math
+import subprocess
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional, Literal, List
@@ -30,6 +31,55 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("homecam")
+
+def convert_to_h264(raw_path: str, final_path: str):
+    logger.info(f"Background thread starting conversion: {raw_path} -> {final_path}")
+    if not os.path.exists(raw_path) or os.path.getsize(raw_path) == 0:
+        logger.error(f"Cannot convert: raw file {raw_path} does not exist or is empty")
+        if os.path.exists(final_path):
+            try:
+                os.remove(final_path)
+            except Exception:
+                pass
+        return
+
+    try:
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", raw_path,
+            "-vcodec", "libx264",
+            "-pix_fmt", "yuv420p",
+            "-preset", "ultrafast",
+            "-loglevel", "error",
+            final_path
+        ]
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode == 0 and os.path.exists(final_path) and os.path.getsize(final_path) > 0:
+            logger.info(f"Successfully converted recording to H.264 MP4: {final_path}")
+            try:
+                os.remove(raw_path)
+            except Exception as e:
+                logger.warning(f"Failed to remove raw file {raw_path}: {e}")
+        else:
+            logger.error(f"FFmpeg conversion failed (exit code {result.returncode}): {result.stderr}")
+            if os.path.exists(raw_path):
+                logger.info(f"Fallback: keeping raw recording file as {final_path}")
+                if os.path.exists(final_path):
+                    try:
+                        os.remove(final_path)
+                    except Exception:
+                        pass
+                os.rename(raw_path, final_path)
+    except Exception as e:
+        logger.error(f"Error during video conversion: {e}")
+        if os.path.exists(raw_path):
+            logger.info(f"Fallback: keeping raw recording file as {final_path}")
+            if os.path.exists(final_path):
+                try:
+                    os.remove(final_path)
+                except Exception:
+                    pass
+            os.rename(raw_path, final_path)
 
 # ---------------------------------------------------------------------------
 # Settings Management
@@ -139,6 +189,7 @@ class CameraManager:
         self.recording = False
         self.recording_type: Literal["motion", "manual"] | None = None
         self.recording_filename: str | None = None
+        self._recording_raw_filepath: str | None = None
         
         # Mock mode fallback (useful for developer containers)
         self._mock = False
@@ -350,20 +401,31 @@ class CameraManager:
 
             now_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             filename = f"{now_str}_{r_type}.mp4"
-            filepath = os.path.join(self.recordings_dir, filename)
+            raw_filename = f"{now_str}_{r_type}_raw.mp4"
+            raw_filepath = os.path.join(self.recordings_dir, raw_filename)
 
             # Ensure recordings dir exists
             os.makedirs(self.recordings_dir, exist_ok=True)
 
             try:
-                fourcc = cv2.VideoWriter_fourcc(*"avc1")
+                # Use mp4v which is 100% supported by OpenCV out of the box
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
                 self._writer = cv2.VideoWriter(
-                    filepath, fourcc, float(self.fps), (self.width, self.height)
+                    raw_filepath, fourcc, float(self.fps), (self.width, self.height)
                 )
+                if not self._writer.isOpened():
+                    logger.error(f"Failed to open VideoWriter with mp4v codec for path {raw_filepath}")
+                    self._writer = None
+                    self.recording = False
+                    self.recording_type = None
+                    self.recording_filename = None
+                    return False
+
                 self.recording = True
                 self.recording_type = r_type
                 self.recording_filename = filename
-                logger.info(f"Started {r_type} VideoWriter stream output: {filepath}")
+                self._recording_raw_filepath = raw_filepath
+                logger.info(f"Started {r_type} VideoWriter stream output (raw): {raw_filepath}")
                 return True
             except Exception as e:
                 logger.error(f"Failed to start VideoWriter stream: {e}")
@@ -371,6 +433,7 @@ class CameraManager:
                 self.recording = False
                 self.recording_type = None
                 self.recording_filename = None
+                self._recording_raw_filepath = None
                 return False
 
     def _stop_recording(self) -> None:
@@ -387,9 +450,20 @@ class CameraManager:
                     logger.error(f"Failed to release VideoWriter: {e}")
                 self._writer = None
             
+            raw_path = self._recording_raw_filepath
+            final_path = os.path.join(self.recordings_dir, self.recording_filename)
+            
+            if raw_path:
+                threading.Thread(
+                    target=convert_to_h264,
+                    args=(raw_path, final_path),
+                    daemon=True
+                ).start()
+
             self.recording = False
             self.recording_type = None
             self.recording_filename = None
+            self._recording_raw_filepath = None
 
     def start_manual_recording(self) -> bool:
         return self._start_recording("manual")
@@ -475,7 +549,7 @@ async def camera_status():
     if os.path.exists(settings.recordings_dir):
         count = len([
             f for f in os.listdir(settings.recordings_dir)
-            if f.endswith((".mp4", ".avi", ".mkv", ".mov"))
+            if f.endswith((".mp4", ".avi", ".mkv", ".mov")) and "_raw" not in f
         ])
         
     return {
@@ -628,6 +702,8 @@ async def list_recordings():
     items = []
     for filepath in files:
         filename = os.path.basename(filepath)
+        if "_raw" in filename:
+            continue
         size_bytes = os.path.getsize(filepath)
         mtime = os.path.getmtime(filepath)
         created_at_dt = datetime.fromtimestamp(mtime, timezone.utc)
@@ -719,6 +795,8 @@ async def get_server_info():
         extensions = ("*.mp4", "*.avi", "*.mkv", "*.mov")
         for ext in extensions:
             for f in glob.glob(os.path.join(settings.recordings_dir, ext)):
+                if "_raw" in os.path.basename(f):
+                    continue
                 total_size += os.path.getsize(f)
                 count += 1
 
