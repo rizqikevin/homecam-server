@@ -85,6 +85,7 @@ def convert_to_h264(raw_path: str, final_path: str):
 # Settings Management
 # ---------------------------------------------------------------------------
 SETTINGS_PATH = "/recordings/settings.json"
+CLEANUP_INTERVAL_SECONDS = int(os.environ.get("CLEANUP_INTERVAL_SECONDS", "3600"))
 
 class Settings(BaseModel):
     camera_device: str = "/dev/video0"
@@ -146,6 +147,8 @@ def cleanup_old_recordings(recordings_dir: str, max_days: int):
         now = time.time()
         max_seconds = max_days * 24 * 3600
         for f in os.listdir(recordings_dir):
+            if "_raw" in f:
+                continue
             if f.endswith((".mp4", ".avi", ".mkv", ".mov")):
                 filepath = os.path.join(recordings_dir, f)
                 file_age = now - os.path.getmtime(filepath)
@@ -480,6 +483,40 @@ camera = CameraManager()
 # App Lifespan
 # ---------------------------------------------------------------------------
 _app_start_time: float = 0.0
+_cleanup_stop_event: threading.Event | None = None
+_cleanup_thread: threading.Thread | None = None
+
+def run_retention_cleanup():
+    settings = load_settings()
+    cleanup_old_recordings(settings.recordings_dir, settings.max_recording_days)
+
+def _retention_cleanup_loop(stop_event: threading.Event):
+    while not stop_event.wait(CLEANUP_INTERVAL_SECONDS):
+        run_retention_cleanup()
+
+def start_retention_cleanup_worker():
+    global _cleanup_stop_event, _cleanup_thread
+    if _cleanup_thread and _cleanup_thread.is_alive():
+        return
+
+    _cleanup_stop_event = threading.Event()
+    _cleanup_thread = threading.Thread(
+        target=_retention_cleanup_loop,
+        args=(_cleanup_stop_event,),
+        name="retention-cleanup",
+        daemon=True,
+    )
+    _cleanup_thread.start()
+    logger.info(f"Retention cleanup worker started (interval: {CLEANUP_INTERVAL_SECONDS}s)")
+
+def stop_retention_cleanup_worker():
+    global _cleanup_stop_event, _cleanup_thread
+    if _cleanup_stop_event:
+        _cleanup_stop_event.set()
+    if _cleanup_thread:
+        _cleanup_thread.join(timeout=5)
+    _cleanup_stop_event = None
+    _cleanup_thread = None
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -492,8 +529,10 @@ async def lifespan(_app: FastAPI):
     load_settings()
     
     camera.start()
+    start_retention_cleanup_worker()
     yield
     logger.info("HomeCam Server shutting down …")
+    stop_retention_cleanup_worker()
     camera.stop()
 
 
@@ -635,12 +674,20 @@ async def patch_settings(payload: SettingsPatch):
         raise HTTPException(status_code=400, detail="FPS must be between 1 and 60")
     if "motion_threshold" in updates and updates["motion_threshold"] <= 0:
         raise HTTPException(status_code=400, detail="Motion threshold must be greater than 0")
+    if "max_recording_days" in updates and (
+        updates["max_recording_days"] < 1 or updates["max_recording_days"] > 365
+    ):
+        raise HTTPException(status_code=400, detail="Max recording days must be between 1 and 365")
 
     # Apply updates
     for key, val in updates.items():
         setattr(current, key, val)
 
     save_settings(current)
+
+    cleanup_params_changed = any(k in updates for k in ["recordings_dir", "max_recording_days"])
+    if cleanup_params_changed:
+        cleanup_old_recordings(current.recordings_dir, current.max_recording_days)
 
     # If stream specification parameters changed, restart camera if online
     stream_params_changed = any(k in updates for k in ["camera_device", "width", "height", "fps"])
