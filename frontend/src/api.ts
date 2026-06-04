@@ -5,7 +5,7 @@ const getApiBaseUrl = (): string => {
     return envUrl;
   }
   // Default production API URL fallback (since served on 3005 and API is on 8005, it is not proxied)
-  return "https://api.rizqikevin.my.id";
+  return "https://api.e-prostock.com";
 };
 
 export const API_BASE_URL = getApiBaseUrl();
