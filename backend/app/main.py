@@ -228,9 +228,27 @@ class CameraManager:
                     logger.error(self.error)
                     return False
 
+                cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
                 cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
                 cap.set(cv2.CAP_PROP_FPS, self.fps)
+                actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                actual_fps = cap.get(cv2.CAP_PROP_FPS)
+                if actual_width != self.width or actual_height != self.height:
+                    logger.warning(
+                        "Camera negotiated %dx%d instead of requested %dx%d",
+                        actual_width,
+                        actual_height,
+                        self.width,
+                        self.height,
+                    )
+                if actual_fps and abs(actual_fps - self.fps) > 0.5:
+                    logger.warning(
+                        "Camera negotiated %.1f FPS instead of requested %d FPS",
+                        actual_fps,
+                        self.fps,
+                    )
                 self._cap = cap
             except Exception as exc:
                 self.status = "error"
@@ -653,6 +671,7 @@ async def get_settings():
 async def patch_settings(payload: SettingsPatch):
     """Modify selected settings fields and reload camera state if required."""
     current = load_settings()
+    previous = current.model_copy()
     updates = payload.model_dump(exclude_unset=True)
 
     # Sensitivity mapping
@@ -694,7 +713,16 @@ async def patch_settings(payload: SettingsPatch):
     if stream_params_changed and camera.status == "online":
         logger.info("Restarting camera thread to apply configuration updates")
         camera.stop()
-        camera.start()
+        if not camera.start():
+            logger.error("Camera rejected updated configuration; restoring previous settings")
+            save_settings(previous)
+            camera.stop()
+            camera.start()
+            detail = camera.error or "Failed to restart camera with updated configuration"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Camera rejected the new configuration: {detail}",
+            )
 
     return current
 

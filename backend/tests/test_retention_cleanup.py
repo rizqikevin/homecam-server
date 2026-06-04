@@ -29,6 +29,9 @@ class FakeBaseModel:
     def model_dump_json(self, indent=None):
         return json.dumps(self.model_dump(), indent=indent)
 
+    def model_copy(self):
+        return type(self)(**self.model_dump())
+
 
 class FakeHTTPException(Exception):
     def __init__(self, status_code, detail):
@@ -89,6 +92,11 @@ def install_dependency_stubs():
     cv2 = types.ModuleType("cv2")
     cv2.VideoCapture = object
     cv2.VideoWriter = object
+    cv2.VideoWriter_fourcc = lambda *chars: "".join(chars)
+    cv2.CAP_PROP_FOURCC = 6
+    cv2.CAP_PROP_FRAME_WIDTH = 3
+    cv2.CAP_PROP_FRAME_HEIGHT = 4
+    cv2.CAP_PROP_FPS = 5
     sys.modules["cv2"] = cv2
 
     numpy = types.ModuleType("numpy")
@@ -193,6 +201,99 @@ class RetentionCleanupTests(unittest.TestCase):
         self.assertEqual(result.width, 1920)
         self.assertEqual(result.height, 1080)
         self.assertEqual(result.fps, 30)
+
+    def test_patch_settings_rolls_back_when_camera_restart_fails(self):
+        main = import_main_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings_path = os.path.join(tmpdir, "settings.json")
+            current = main.Settings(recordings_dir=tmpdir, width=640, height=480, fps=15)
+            with open(settings_path, "w") as f:
+                f.write(current.model_dump_json(indent=2))
+
+            calls = []
+            start_attempts = 0
+
+            def start():
+                nonlocal start_attempts
+                calls.append("start")
+                start_attempts += 1
+                return start_attempts > 1
+
+            main.SETTINGS_PATH = settings_path
+            main.camera = types.SimpleNamespace(
+                status="online",
+                stop=lambda: calls.append("stop"),
+                start=start,
+                error="unsupported resolution",
+            )
+
+            with self.assertRaises(FakeHTTPException) as ctx:
+                asyncio.run(main.patch_settings(main.SettingsPatch(width=1920, height=1080)))
+
+            reloaded = main.load_settings()
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(ctx.exception.detail, "Camera rejected the new configuration: unsupported resolution")
+        self.assertEqual((reloaded.width, reloaded.height, reloaded.fps), (640, 480, 15))
+        self.assertEqual(calls, ["stop", "start", "stop", "start"])
+
+    def test_camera_start_requests_mjpg_before_hd_resolution(self):
+        main = import_main_module()
+        set_calls = []
+
+        class FakeCapture:
+            def __init__(self, device):
+                self.device = device
+                self.values = {
+                    main.cv2.CAP_PROP_FRAME_WIDTH: 1920,
+                    main.cv2.CAP_PROP_FRAME_HEIGHT: 1080,
+                    main.cv2.CAP_PROP_FPS: 30,
+                }
+
+            def isOpened(self):
+                return True
+
+            def set(self, prop, value):
+                set_calls.append((prop, value))
+                self.values[prop] = value
+                return True
+
+            def get(self, prop):
+                return self.values.get(prop, 0)
+
+            def read(self):
+                return False, None
+
+            def release(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings_path = os.path.join(tmpdir, "settings.json")
+            current = main.Settings(
+                recordings_dir=tmpdir,
+                width=1920,
+                height=1080,
+                fps=30,
+            )
+            with open(settings_path, "w") as f:
+                f.write(current.model_dump_json(indent=2))
+
+            main.SETTINGS_PATH = settings_path
+            main.cv2.VideoCapture = FakeCapture
+
+            camera = main.CameraManager()
+            self.assertTrue(camera.start())
+            camera.stop()
+
+        self.assertEqual(
+            set_calls[:4],
+            [
+                (main.cv2.CAP_PROP_FOURCC, "MJPG"),
+                (main.cv2.CAP_PROP_FRAME_WIDTH, 1920),
+                (main.cv2.CAP_PROP_FRAME_HEIGHT, 1080),
+                (main.cv2.CAP_PROP_FPS, 30),
+            ],
+        )
 
 
 if __name__ == "__main__":
