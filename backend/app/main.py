@@ -670,8 +670,8 @@ async def patch_settings(payload: SettingsPatch):
         raise HTTPException(status_code=400, detail="Width must be greater than 0")
     if "height" in updates and updates["height"] <= 0:
         raise HTTPException(status_code=400, detail="Height must be greater than 0")
-    if "fps" in updates and (updates["fps"] <= 0 or updates["fps"] > 60):
-        raise HTTPException(status_code=400, detail="FPS must be between 1 and 60")
+    if "fps" in updates and (updates["fps"] <= 0 or updates["fps"] > 30):
+        raise HTTPException(status_code=400, detail="FPS must be between 1 and 30")
     if "motion_threshold" in updates and updates["motion_threshold"] <= 0:
         raise HTTPException(status_code=400, detail="Motion threshold must be greater than 0")
     if "max_recording_days" in updates and (
