@@ -19,7 +19,7 @@ services:
     build:
       context: ./frontend
       args:
-        VITE_API_BASE_URL: https://api.rizqikevin.my.id
+        VITE_API_BASE_URL: https://api.e-prostock.com
     container_name: homecam-frontend
     ports:
       - "3005:3000"

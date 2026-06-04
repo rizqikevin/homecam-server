@@ -848,7 +848,7 @@ async def get_server_info():
                 count += 1
 
     return {
-        "api_base_url": "https://api.rizqikevin.my.id",
+        "api_base_url": "https://api.e-prostock.com",
         "server_time": datetime.now(timezone.utc).isoformat(),
         "recordings_dir": settings.recordings_dir,
         "camera_device": settings.camera_device,
