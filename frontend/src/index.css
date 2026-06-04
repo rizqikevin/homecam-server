@@ -1473,7 +1473,8 @@ body {
   gap: 4px;
 }
 
-.select-label select {
+.select-label select,
+.select-label input {
   background: var(--bg-input);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
@@ -1488,7 +1489,12 @@ body {
   cursor: pointer;
 }
 
-.select-label select:disabled {
+.select-label input {
+  cursor: text;
+}
+
+.select-label select:disabled,
+.select-label input:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }

@@ -161,6 +161,39 @@ class RetentionCleanupTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertEqual(ctx.exception.detail, "Max recording days must be between 1 and 365")
 
+    def test_patch_settings_rejects_fps_above_camera_limit(self):
+        main = import_main_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings_path = os.path.join(tmpdir, "settings.json")
+            current = main.Settings(recordings_dir=tmpdir, fps=15)
+            with open(settings_path, "w") as f:
+                f.write(current.model_dump_json(indent=2))
+
+            main.SETTINGS_PATH = settings_path
+            with self.assertRaises(FakeHTTPException) as ctx:
+                asyncio.run(main.patch_settings(main.SettingsPatch(fps=31)))
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(ctx.exception.detail, "FPS must be between 1 and 30")
+
+    def test_patch_settings_accepts_1080p_at_30_fps(self):
+        main = import_main_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings_path = os.path.join(tmpdir, "settings.json")
+            current = main.Settings(recordings_dir=tmpdir, width=640, height=480, fps=15)
+            with open(settings_path, "w") as f:
+                f.write(current.model_dump_json(indent=2))
+
+            main.SETTINGS_PATH = settings_path
+            main.camera = types.SimpleNamespace(status="offline", stop=lambda: None, start=lambda: True)
+            result = asyncio.run(
+                main.patch_settings(main.SettingsPatch(width=1920, height=1080, fps=30))
+            )
+
+        self.assertEqual(result.width, 1920)
+        self.assertEqual(result.height, 1080)
+        self.assertEqual(result.fps, 30)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -9,6 +9,14 @@ const MAX_RECORDING_DAYS_DEBOUNCE_MS = 700;
 const clampMaxRecordingDays = (days: number) =>
   Math.min(MAX_RECORDING_DAYS_MAX, Math.max(MAX_RECORDING_DAYS_MIN, days));
 
+const CAMERA_RESOLUTION_OPTIONS = [
+  { label: "480p (640 x 480)", width: 640, height: 480 },
+  { label: "720p HD (1280 x 720)", width: 1280, height: 720 },
+  { label: "1080p Full HD (1920 x 1080)", width: 1920, height: 1080 },
+];
+
+const CAMERA_FPS_OPTIONS = [15, 24, 30];
+
 export default function Settings() {
   const {
     settings,
@@ -100,6 +108,69 @@ export default function Settings() {
       triggerFeedback(
         "error",
         err instanceof Error ? err.message : "Failed to update settings",
+      );
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleChangeCameraDevice = async (cameraDevice: string) => {
+    const device = cameraDevice.trim();
+    if (!device || device === settings?.camera_device) {
+      return;
+    }
+
+    setUpdating(true);
+    try {
+      await updateSettings({ camera_device: device });
+      triggerFeedback("success", `Camera device set to ${device}`);
+    } catch (err) {
+      triggerFeedback(
+        "error",
+        err instanceof Error ? err.message : "Failed to update camera device",
+      );
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleChangeCameraResolution = async (value: string) => {
+    const [width, height] = value.split("x").map(Number);
+    if (
+      !Number.isInteger(width) ||
+      !Number.isInteger(height) ||
+      (width === settings?.width && height === settings?.height)
+    ) {
+      return;
+    }
+
+    setUpdating(true);
+    try {
+      await updateSettings({ width, height });
+      triggerFeedback("success", `Camera resolution set to ${width} x ${height}`);
+    } catch (err) {
+      triggerFeedback(
+        "error",
+        err instanceof Error ? err.message : "Failed to update resolution",
+      );
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleChangeCameraFps = async (fps: number) => {
+    if (!Number.isInteger(fps) || fps === settings?.fps) {
+      return;
+    }
+
+    setUpdating(true);
+    try {
+      await updateSettings({ fps });
+      triggerFeedback("success", `Camera frame rate set to ${fps} FPS`);
+    } catch (err) {
+      triggerFeedback(
+        "error",
+        err instanceof Error ? err.message : "Failed to update frame rate",
       );
     } finally {
       setUpdating(false);
@@ -265,6 +336,82 @@ export default function Settings() {
                 </button>
               </div>
             </div>
+          </div>
+        </section>
+
+        {/* Camera Configuration */}
+        <section className="settings-section">
+          <h2>📷 Camera Configuration</h2>
+          <div className="settings-card-body">
+            {settings ? (
+              <>
+                <div className="form-group">
+                  <label className="select-label">
+                    <strong>Camera Device</strong>
+                    <span className="label-sub">
+                      Linux video device path used by the backend capture process
+                    </span>
+                    <input
+                      type="text"
+                      defaultValue={settings.camera_device}
+                      disabled={updating || !backendOnline}
+                      onBlur={(e) => handleChangeCameraDevice(e.target.value)}
+                    />
+                  </label>
+                </div>
+
+                <div className="form-group">
+                  <label className="select-label">
+                    <strong>Resolution</strong>
+                    <span className="label-sub">
+                      Choose the capture size supported by the connected camera
+                    </span>
+                    <select
+                      value={`${settings.width}x${settings.height}`}
+                      disabled={updating || !backendOnline}
+                      onChange={(e) =>
+                        handleChangeCameraResolution(e.target.value)
+                      }
+                    >
+                      {CAMERA_RESOLUTION_OPTIONS.map((option) => (
+                        <option
+                          key={`${option.width}x${option.height}`}
+                          value={`${option.width}x${option.height}`}
+                        >
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="form-group">
+                  <label className="select-label">
+                    <strong>Frame Rate</strong>
+                    <span className="label-sub">
+                      Camera FPS limit for this setup, up to 30 FPS
+                    </span>
+                    <select
+                      value={settings.fps}
+                      disabled={updating || !backendOnline}
+                      onChange={(e) =>
+                        handleChangeCameraFps(Number(e.target.value))
+                      }
+                    >
+                      {CAMERA_FPS_OPTIONS.map((fps) => (
+                        <option key={fps} value={fps}>
+                          {fps} FPS
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </>
+            ) : (
+              <p style={{ color: "var(--text-muted)" }}>
+                Connecting to Settings API...
+              </p>
+            )}
           </div>
         </section>
 
