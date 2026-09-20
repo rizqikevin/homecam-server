@@ -1,5 +1,7 @@
 services:
   backend:
+    # MediaPipe 0.10.21 requires Linux x86_64; Apple Silicon uses emulation.
+    platform: linux/amd64
     build: ./backend
     container_name: homecam-backend
     ports:
