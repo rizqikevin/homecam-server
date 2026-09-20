@@ -14,7 +14,7 @@ from typing import Optional, Sequence
 
 import numpy as np
 
-from backend.app.human_motion import Landmark, PersonObservation, Sensitivity
+from .human_motion import Landmark, PersonObservation, Sensitivity
 
 logger = logging.getLogger("homecam.pose")
 

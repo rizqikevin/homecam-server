@@ -23,8 +23,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
 
-from backend.app.human_motion import HumanMotionAnalyzer, Sensitivity
-from backend.app.pose_detector import PoseDetector, PoseDetectorError
+from .human_motion import HumanMotionAnalyzer, Sensitivity
+from .pose_detector import PoseDetector, PoseDetectorError
 
 # ---------------------------------------------------------------------------
 # Logging
