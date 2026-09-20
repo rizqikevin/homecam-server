@@ -63,7 +63,24 @@ class FakeFastAPI:
         return func
 
 
+_STUBBED_MODULE_NAMES = [
+    "fastapi",
+    "fastapi.middleware",
+    "fastapi.middleware.cors",
+    "fastapi.responses",
+    "pydantic",
+    "cv2",
+    "numpy",
+]
+_ORIGINAL_MODULES = {}
+
+
 def install_dependency_stubs():
+    global _ORIGINAL_MODULES
+    if not _ORIGINAL_MODULES:
+        for name in _STUBBED_MODULE_NAMES:
+            _ORIGINAL_MODULES[name] = sys.modules.get(name)
+
     fastapi = types.ModuleType("fastapi")
     fastapi.FastAPI = FakeFastAPI
     fastapi.HTTPException = FakeHTTPException
@@ -111,6 +128,17 @@ def import_main_module():
 
 
 class RetentionCleanupTests(unittest.TestCase):
+    @classmethod
+    def tearDownClass(cls):
+        global _ORIGINAL_MODULES
+        for name, orig in _ORIGINAL_MODULES.items():
+            if orig is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = orig
+        _ORIGINAL_MODULES.clear()
+        sys.modules.pop("backend.app.main", None)
+
     def test_cleanup_old_recordings_skips_raw_conversion_files(self):
         main = import_main_module()
         with tempfile.TemporaryDirectory() as tmpdir:
