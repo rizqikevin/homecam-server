@@ -52,6 +52,8 @@ export interface HealthStatus {
   timestamp: string;
 }
 
+export type DetectorStatus = "disabled" | "initializing" | "ready" | "error";
+
 export interface CameraStatus {
   status: "online" | "offline" | "error";
   online: boolean;
@@ -62,6 +64,8 @@ export interface CameraStatus {
   fps: number;
   motion_detection_enabled: boolean;
   motion_detected: boolean;
+  detector_status?: DetectorStatus;
+  detector_error?: string | null;
   auto_record_enabled: boolean;
   recording: boolean;
   recording_filename: string | null;

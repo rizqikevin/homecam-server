@@ -2,7 +2,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 
 export default function Layout() {
-  const { backendOnline, isRecording, motionDetected } = useApp();
+  const { backendOnline, isRecording, motionDetected, camera } = useApp();
 
   return (
     <div className="app-layout">
@@ -12,7 +12,12 @@ export default function Layout() {
           <span className="brand-icon">🎥</span>
           <span className="brand-name">HomeCam</span>
         </div>
-        <div className="header-indicators">
+          <div className="header-indicators">
+          {camera?.detector_status === "error" && (
+            <span className="badge badge-danger" title={camera.detector_error || "Pose detector error"}>
+              DETECTOR ERR
+            </span>
+          )}
           {motionDetected && <span className="badge-motion">MOTION</span>}
           {isRecording && <span className="badge-recording">● REC</span>}
           <span
@@ -36,6 +41,25 @@ export default function Layout() {
           <div className="indicator-row">
             <span className="indicator-label">Backend</span>
             <span className={`dot ${backendOnline ? "dot-green" : "dot-red"}`} />
+          </div>
+          <div className="indicator-row">
+            <span className="indicator-label">Human Detector</span>
+            <span
+              className={`dot ${
+                camera?.detector_status === "ready"
+                  ? "dot-green"
+                  : camera?.detector_status === "initializing"
+                  ? "dot-amber"
+                  : camera?.detector_status === "error"
+                  ? "dot-red"
+                  : "dot-grey"
+              }`}
+              title={
+                camera?.detector_status === "error" && camera.detector_error
+                  ? camera.detector_error
+                  : camera?.detector_status || "offline"
+              }
+            />
           </div>
           {motionDetected && (
             <div className="indicator-row animate-pulse">

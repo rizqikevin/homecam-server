@@ -136,6 +136,11 @@ export default function Dashboard() {
           <p className="page-subtitle">Real-time CCTV feed and camera diagnostics</p>
         </div>
         {error && <div className="error-banner">{error}</div>}
+        {camera?.detector_error && (
+          <div className="error-banner" role="alert" style={{ marginTop: "10px" }}>
+            <strong>Human Pose Detector Warning:</strong> {camera.detector_error}
+          </div>
+        )}
       </div>
 
       {/* Main Status Grid */}
@@ -184,6 +189,42 @@ export default function Dashboard() {
           </div>
         </div>
 
+        <div
+          className={`status-card ${
+            camera?.detector_status === "ready"
+              ? "status-online"
+              : camera?.detector_status === "error"
+              ? "status-error"
+              : ""
+          }`}
+        >
+          <div className="status-icon">
+            <span
+              className={`dot ${
+                camera?.detector_status === "ready"
+                  ? "dot-green"
+                  : camera?.detector_status === "initializing"
+                  ? "dot-amber"
+                  : camera?.detector_status === "error"
+                  ? "dot-red"
+                  : "dot-grey"
+              }`}
+            />
+          </div>
+          <div className="status-info">
+            <span className="status-label">Human Detector</span>
+            <span className="status-value">
+              {camera?.detector_status === "ready"
+                ? "Ready"
+                : camera?.detector_status === "initializing"
+                ? "Initializing"
+                : camera?.detector_status === "error"
+                ? "Error"
+                : "Disabled"}
+            </span>
+          </div>
+        </div>
+
         {/* Recording Status */}
         <div className={`status-card ${isRecording ? "status-active-rec" : ""}`}>
           <div className="status-icon">
@@ -201,7 +242,7 @@ export default function Dashboard() {
             <span className={`dot-motion ${motionDetected ? "active" : "inactive"}`} />
           </div>
           <div className="status-info">
-            <span className="status-label">Motion Sensor</span>
+            <span className="status-label">Human Motion</span>
             <span className="status-value">{motionDetected ? "Detected" : "Idle"}</span>
           </div>
         </div>
@@ -325,7 +366,7 @@ export default function Dashboard() {
       {/* Camera Details */}
       {camera && (
         <div className="details-card">
-          <h3>Camera Device Details</h3>
+          <h3>Camera & Detector Details</h3>
           <div className="details-grid">
             <div className="detail-item">
               <span className="detail-label">Device Path</span>
@@ -343,6 +384,24 @@ export default function Dashboard() {
               <span className="detail-label">Uptime</span>
               <span className="detail-value">
                 {health ? formatUptime(health.uptime_seconds) : "—"}
+              </span>
+            </div>
+            <div className="detail-item">
+              <span className="detail-label">Pose Detector</span>
+              <span className="detail-value">
+                {camera.detector_status
+                  ? camera.detector_status.toUpperCase()
+                  : "N/A"}
+              </span>
+            </div>
+            <div className="detail-item">
+              <span className="detail-label">Detector Health</span>
+              <span className="detail-value">
+                {camera.detector_error ? (
+                  <span className="text-red">{camera.detector_error}</span>
+                ) : (
+                  <span className="text-green">Normal</span>
+                )}
               </span>
             </div>
           </div>

@@ -417,7 +417,7 @@ export default function Settings() {
 
         {/* Security & Analytics */}
         <section className="settings-section">
-          <h2>🔒 Detection & Auto-Record</h2>
+          <h2>🔒 Human Motion Detection & Auto-Record</h2>
           <div className="settings-card-body">
             {settings ? (
               <>
@@ -431,9 +431,9 @@ export default function Settings() {
                     />
                     <span className="toggle-slider"></span>
                     <span className="label-text">
-                      <strong>Enable Motion Detection</strong>
+                      <strong>Enable Human Motion Detection</strong>
                       <span className="label-sub">
-                        Analyzes live video stream frames for pixel variations
+                        Tracks movement of body landmarks via MediaPipe Pose Lite
                       </span>
                     </span>
                   </label>
@@ -453,10 +453,9 @@ export default function Settings() {
                     />
                     <span className="toggle-slider"></span>
                     <span className="label-text">
-                      <strong>Auto-Record on Motion</strong>
+                      <strong>Auto-Record on Human Motion</strong>
                       <span className="label-sub">
-                        Automatically saves a 10s video clip when motion is
-                        detected
+                        Automatically records when body movement is detected until activity stops
                       </span>
                     </span>
                   </label>
@@ -464,10 +463,9 @@ export default function Settings() {
 
                 <div className="form-group">
                   <label className="select-label">
-                    <strong>Detection Sensitivity</strong>
+                    <strong>Movement Sensitivity</strong>
                     <span className="label-sub">
-                      Adjust how sensitive the motion algorithm triggers (low,
-                      medium, high)
+                      Adjust how much body movement is needed to trigger detection (low, medium, high)
                     </span>
                     <select
                       value={settings.detection_sensitivity}
@@ -483,13 +481,13 @@ export default function Settings() {
                       }
                     >
                       <option value="low">
-                        Low (Large objects only - 9000px threshold)
+                        Low (Requires significant body movement)
                       </option>
                       <option value="medium">
-                        Medium (Standard - 5000px threshold)
+                        Medium (Standard body landmark movement)
                       </option>
                       <option value="high">
-                        High (Breezes, shadows - 2500px threshold)
+                        High (Detects subtle body movement)
                       </option>
                     </select>
                   </label>
