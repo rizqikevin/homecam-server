@@ -13,6 +13,7 @@ import math
 import subprocess
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path as FilePath
 from typing import Optional, Literal, List
 import numpy as np
 
@@ -21,6 +22,9 @@ from fastapi import FastAPI, HTTPException, Query, Response, Path
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
+
+from backend.app.human_motion import HumanMotionAnalyzer, Sensitivity
+from backend.app.pose_detector import PoseDetector, PoseDetectorError
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -95,7 +99,10 @@ class Settings(BaseModel):
     motion_detection_enabled: bool = False
     auto_record_enabled: bool = False
     detection_sensitivity: Literal["low", "medium", "high"] = "medium"
-    motion_threshold: int = 5000
+    motion_threshold: int = Field(
+        default=5000,
+        description="Deprecated legacy pixel-difference threshold; ignored by pose motion detection.",
+    )
     stop_recording_after_seconds: int = 10
     recording_clip_seconds: int = 10
     recordings_dir: str = "/recordings"
@@ -158,6 +165,17 @@ def cleanup_old_recordings(recordings_dir: str, max_days: int):
     except Exception as e:
         logger.error(f"Failed to clean up old recordings: {e}")
 
+def get_detection_interval() -> float:
+    raw = os.environ.get("HUMAN_DETECTION_INTERVAL_SECONDS", "0.5")
+    try:
+        val = float(raw)
+        if math.isfinite(val) and val > 0:
+            return val
+    except (ValueError, TypeError):
+        pass
+    return 0.5
+
+
 # ---------------------------------------------------------------------------
 # Camera Manager
 # ---------------------------------------------------------------------------
@@ -186,6 +204,15 @@ class CameraManager:
         self.motion_detected = False
         self._prev_frame: np.ndarray | None = None
         self._last_motion_time = 0.0
+
+        self.detector_status: Literal["disabled", "initializing", "ready", "error"] = "disabled"
+        self.detector_error: str | None = None
+        self._detector: PoseDetector | None = None
+        self._analyzer: HumanMotionAnalyzer = HumanMotionAnalyzer()
+        self._last_detection_time = 0.0
+        self._last_detector_ts = -1
+        self._detector_failed = False
+        self._prev_motion_enabled = False
         
         # Recording fields
         self._writer: cv2.VideoWriter | None = None
@@ -202,6 +229,16 @@ class CameraManager:
         if self._running:
             logger.info("Camera already running")
             return True
+
+        if self._thread is not None and self._thread.is_alive():
+            logger.warning("Refusing to start: previous camera thread is still stopping")
+            return False
+
+        if self._thread is not None and not self._thread.is_alive():
+            self._thread = None
+            if self._cap is not None:
+                self._cap.release()
+                self._cap = None
 
         settings = load_settings()
         self.device = settings.camera_device
@@ -285,6 +322,9 @@ class CameraManager:
 
         if self._thread is not None:
             self._thread.join(timeout=3)
+            if self._thread.is_alive():
+                logger.warning("Camera capture thread did not stop within timeout; retaining thread handle")
+                return
             self._thread = None
             
         if self._cap is not None:
@@ -316,102 +356,142 @@ class CameraManager:
 
     def _capture_loop(self) -> None:
         """Background loop reading frames, writing video, and running motion logic."""
-        while self._running:
-            frame = None
-            if self._mock:
-                # 1. Create simulated mock test card
-                frame = np.zeros((self.height, self.width, 3), dtype=np.uint8)
-                now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                cv2.putText(frame, f"HomeCam MOCK: {now_str}", (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (241, 245, 249), 2)
-                cv2.putText(frame, f"Device: {self.device} (Mock)", (30, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (148, 163, 184), 1)
-                
-                # Draw simple animations for visual verification
-                t = time.time()
-                cx = int(self.width / 2 + math.sin(t * 1.5) * (self.width / 4))
-                cy = int(self.height / 2 + math.cos(t * 2.2) * (self.height / 5))
-                cv2.circle(frame, (cx, cy), 25, (59, 130, 246), -1) # Accent bouncing circle
-                
-                # Mock moving rectangle (triggers motion detection simulator periodically)
-                settings = load_settings()
-                if settings.motion_detection_enabled:
-                    if int(t) % 6 < 2:
-                        cv2.rectangle(frame, (80, 150), (160, 230), (34, 197, 94), -1)
-                        
-                time.sleep(1 / self.fps)
-            else:
-                if self._cap is None:
-                    break
-                ret, frame = self._cap.read()
-                if not ret:
-                    logger.warning("Failed to read frame from camera")
-                    time.sleep(0.1)
-                    continue
+        try:
+            while self._running:
+                frame = None
+                if self._mock:
+                    # 1. Create simulated mock test card
+                    frame = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+                    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                    cv2.putText(frame, f"HomeCam MOCK: {now_str}", (30, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (241, 245, 249), 2)
+                    cv2.putText(frame, f"Device: {self.device} (Mock)", (30, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (148, 163, 184), 1)
+                    
+                    # Draw simple animations for visual verification
+                    t = time.time()
+                    cx = int(self.width / 2 + math.sin(t * 1.5) * (self.width / 4))
+                    cy = int(self.height / 2 + math.cos(t * 2.2) * (self.height / 5))
+                    cv2.circle(frame, (cx, cy), 25, (59, 130, 246), -1)
+                    
+                    time.sleep(1 / self.fps)
+                else:
+                    if self._cap is None:
+                        break
+                    ret, frame = self._cap.read()
+                    if not ret:
+                        logger.warning("Failed to read frame from camera")
+                        time.sleep(0.1)
+                        continue
 
-            # 2. Process OpenCV motion differencing
-            self._process_motion(frame)
+                # 2. Process human pose motion detection
+                self._process_motion(frame)
 
-            # 3. Write active frames
-            with self._lock:
-                if self._writer is not None:
-                    try:
-                        self._writer.write(frame)
-                    except Exception as e:
-                        logger.error(f"VideoWriter write failed: {e}")
+                # 3. Write active frames
+                with self._lock:
+                    if self._writer is not None:
+                        try:
+                            self._writer.write(frame)
+                        except Exception as e:
+                            logger.error(f"VideoWriter write failed: {e}")
 
-            # 4. Generate MJPEG JPEG Frame
-            _, jpeg = cv2.imencode(".jpg", frame)
-            with self._lock:
-                self._frame = jpeg.tobytes()
+                # 4. Generate MJPEG JPEG Frame
+                _, jpeg = cv2.imencode(".jpg", frame)
+                with self._lock:
+                    self._frame = jpeg.tobytes()
 
-            if not self._mock:
-                time.sleep(1 / self.fps)
-
-        logger.info("Capture loop exited")
+                if not self._mock:
+                    time.sleep(1 / self.fps)
+        finally:
+            if self._detector is not None:
+                self._detector.close()
+                self._detector = None
+            logger.info("Capture loop exited")
 
     def _process_motion(self, frame: np.ndarray) -> None:
-        """Run OpenCV lightweight motion differencing and toggle auto-recording."""
+        """Run human pose detection and motion analysis, toggling auto-recording."""
         settings = load_settings()
         if not settings.motion_detection_enabled:
             self.motion_detected = False
-            self._prev_frame = None
+            self._analyzer.reset()
             if self.recording and self.recording_type == "motion":
                 self._stop_recording()
+            self.detector_status = "disabled"
+            self.detector_error = None
+            self._detector_failed = False
+            self._prev_motion_enabled = False
+            if self._detector is not None:
+                self._detector.close()
+                self._detector = None
             return
 
-        # Convert to grayscale & blur
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        gray = cv2.GaussianBlur(gray, (21, 21), 0)
+        if not self._prev_motion_enabled:
+            self._detector_failed = False
+        self._prev_motion_enabled = True
 
-        if self._prev_frame is None:
-            self._prev_frame = gray
+        if self._detector_failed:
+            self._check_motion_timeout(settings)
             return
 
-        # Frame difference & threshold
-        frame_delta = cv2.absdiff(self._prev_frame, gray)
-        thresh = cv2.threshold(frame_delta, 25, 255, cv2.THRESH_BINARY)[1]
-        thresh = cv2.dilate(thresh, None, iterations=2)
-        non_zero = cv2.countNonZero(thresh)
+        if self._detector is None:
+            self.detector_status = "initializing"
+            try:
+                model_path_str = os.environ.get(
+                    "POSE_MODEL_PATH",
+                    str(FilePath(__file__).resolve().parent.parent / "models" / "pose_landmarker_lite.task"),
+                )
+                self._detector = PoseDetector(FilePath(model_path_str))
+                self.detector_status = "ready"
+                self.detector_error = None
+            except Exception as exc:
+                logger.error(f"PoseDetector initialization failed: {exc}")
+                self.detector_status = "error"
+                self.detector_error = str(exc)
+                self._detector_failed = True
+                self.motion_detected = False
+                if self.recording and self.recording_type == "motion":
+                    self._stop_recording()
+                return
 
-        self._prev_frame = gray
+        now = time.time()
+        interval = get_detection_interval()
+        if now - self._last_detection_time >= interval:
+            self._last_detection_time = now
+            monotonic_ms = int(time.monotonic() * 1000)
+            if monotonic_ms <= self._last_detector_ts:
+                monotonic_ms = self._last_detector_ts + 1
+            self._last_detector_ts = monotonic_ms
 
-        # Motion threshold match
-        threshold = settings.motion_threshold
-        if non_zero > threshold:
-            if not self.motion_detected:
-                logger.info(f"Motion alert triggered: non-zero pixels {non_zero} > {threshold}")
-            self.motion_detected = True
-            self._last_motion_time = time.time()
+            try:
+                observations = self._detector.detect(frame, monotonic_ms)
+                sens_str = settings.detection_sensitivity.upper()
+                sensitivity = Sensitivity[sens_str] if hasattr(Sensitivity, sens_str) else Sensitivity.MEDIUM
+                result = self._analyzer.process(observations, sensitivity=sensitivity)
+                if result.any_human_moving:
+                    if not self.motion_detected:
+                        logger.info("Human motion alert triggered")
+                    self.motion_detected = True
+                    self._last_motion_time = time.time()
 
-            if settings.auto_record_enabled and not self.recording:
-                self._start_recording("motion")
-        else:
-            if self.motion_detected:
-                if time.time() - self._last_motion_time > settings.stop_recording_after_seconds:
-                    logger.info("Motion alert cleared (timeout reached)")
-                    self.motion_detected = False
-                    
-                    if self.recording and self.recording_type == "motion":
-                        self._stop_recording()
+                    if settings.auto_record_enabled and not self.recording:
+                        self._start_recording("motion")
+            except Exception as exc:
+                logger.error(f"Pose detection inference failed: {exc}")
+                self.detector_status = "error"
+                self.detector_error = str(exc)
+                self._detector_failed = True
+                self.motion_detected = False
+                if self.recording and self.recording_type == "motion":
+                    self._stop_recording()
+                return
+
+        self._check_motion_timeout(settings)
+
+    def _check_motion_timeout(self, settings: Settings) -> None:
+        if self.motion_detected:
+            if time.time() - self._last_motion_time > settings.stop_recording_after_seconds:
+                logger.info("Motion alert cleared (timeout reached)")
+                self.motion_detected = False
+                if self.recording and self.recording_type == "motion":
+                    self._stop_recording()
 
     def _start_recording(self, r_type: Literal["motion", "manual"]) -> bool:
         """Initialize VideoWriter stream to output an MP4 file."""
@@ -619,6 +699,8 @@ async def camera_status():
         "fps": camera.fps,
         "motion_detection_enabled": settings.motion_detection_enabled,
         "motion_detected": camera.motion_detected,
+        "detector_status": camera.detector_status,
+        "detector_error": camera.detector_error,
         "auto_record_enabled": settings.auto_record_enabled,
         "recording": camera.recording,
         "recording_filename": camera.recording_filename,
