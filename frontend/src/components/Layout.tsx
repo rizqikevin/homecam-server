@@ -1,8 +1,24 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useApp } from "../context/AppContext";
+import { useState } from "react";
+import { useAuth } from "../context/AuthContext";
 
 export default function Layout() {
   const { backendOnline, isRecording, motionDetected, camera } = useApp();
+  const { username, logout } = useAuth();
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+
+  async function signOut() {
+    setLoggingOut(true);
+    setLogoutError(null);
+    try {
+      await logout();
+    } catch (err) {
+      setLogoutError(err instanceof Error ? err.message : "Unable to sign out. Try again.");
+      setLoggingOut(false);
+    }
+  }
 
   return (
     <div className="app-layout">
@@ -97,6 +113,11 @@ export default function Layout() {
 
       {/* Main Content */}
       <main className="main-content">
+        <div className="session-controls">
+          <span>Signed in as <strong>{username}</strong></span>
+          <button type="button" className="btn auth-logout" onClick={signOut} disabled={loggingOut}>{loggingOut ? "Signing out…" : "Sign out"}</button>
+        </div>
+        {logoutError && <p className="auth-error" role="alert">{logoutError}</p>}
         <Outlet />
       </main>
 

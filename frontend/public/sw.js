@@ -1,4 +1,4 @@
-const CACHE_NAME = "homecam-cache-v1";
+const CACHE_NAME = "homecam-cache-v2";
 const ASSETS_TO_CACHE = [
   "/",
   "/index.html",
@@ -41,27 +41,8 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // Bypass cache entirely for camera stream
-  if (url.pathname.includes("/api/camera/stream")) {
-    return;
-  }
-
-  // API Requests: Network-First (or network only for state-changing POSTs)
-  if (url.pathname.startsWith("/api/")) {
-    if (event.request.method !== "GET") {
-      // POST requests (like start/stop) must always bypass cache
-      return;
-    }
-    
-    event.respondWith(
-      fetch(event.request)
-        .catch(() => {
-          // Fallback to cache for GET API queries if offline, or fail gracefully
-          return caches.match(event.request);
-        })
-    );
-    return;
-  }
+  // Private API responses must never come from the offline cache.
+  if (url.pathname.startsWith("/api/")) return;
 
   // Static Assets / Page Navigation: Cache-First, fallback to Network
   event.respondWith(

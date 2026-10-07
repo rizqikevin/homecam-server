@@ -1,46 +1,42 @@
-const getApiBaseUrl = (): string => {
-  const envUrl = import.meta.env.VITE_API_BASE_URL;
-  // If envUrl is explicitly provided and is NOT an empty string, use it.
-  if (envUrl && envUrl.trim() !== "") {
-    return envUrl;
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
   }
-  // Default production API URL fallback (since served on 3005 and API is on 8005, it is not proxied)
-  return "https://api.rizqikevin.my.id";
-};
-
-export const API_BASE_URL = getApiBaseUrl();
-
-/** GET JSON from the API. */
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`);
-  if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
-  return res.json();
 }
 
-/** POST to the API (no body). */
-async function post<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, { method: "POST" });
-  if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`);
-  return res.json();
-}
-
-/** PATCH to the API. */
-async function patch<T>(path: string, body: unknown): Promise<T> {
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    ...options,
+    credentials: "include",
+    cache: "no-store",
   });
-  if (!res.ok) throw new Error(`PATCH ${path} failed: ${res.status}`);
+  if (!res.ok) {
+    if (res.status === 401 && !path.startsWith("/api/auth/")) {
+      window.dispatchEvent(new Event("homecam:unauthorized"));
+    }
+    const body = await res.json().catch(() => null);
+    throw new ApiError(res.status, typeof body?.detail === "string" ? body.detail : `Request failed: ${res.status}`);
+  }
   return res.json();
 }
 
-/** DELETE from the API. */
-async function del<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`DELETE ${path} failed: ${res.status}`);
-  return res.json();
-}
+const get = <T,>(path: string) => request<T>(path);
+const post = <T,>(path: string, body?: unknown) => request<T>(path, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+});
+const patch = <T,>(path: string, body: unknown) => request<T>(path, {
+  method: "PATCH",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+const del = <T,>(path: string) => request<T>(path, { method: "DELETE" });
 
 // ---------------------------------------------------------------------------
 // Type Definitions
@@ -117,6 +113,9 @@ export interface ServerInfo {
 }
 
 export const api = {
+  getSession: () => get<{ username: string }>("/api/auth/session"),
+  login: (username: string, password: string) => post<{ username: string }>("/api/auth/login", { username, password }),
+  logout: () => post<{ message: string }>("/api/auth/logout"),
   getHealth: () => get<HealthStatus>("/api/health"),
   getCameraStatus: () => get<CameraStatus>("/api/camera/status"),
   startCamera: () => post<{ message: string }>("/api/camera/start"),

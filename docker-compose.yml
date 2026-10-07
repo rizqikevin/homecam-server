@@ -5,7 +5,7 @@ services:
     build: ./backend
     container_name: homecam-backend
     ports:
-      - "8005:8000"
+      - "127.0.0.1:8005:8000"
     privileged: true
     volumes:
       - ./recordings:/recordings
@@ -16,15 +16,20 @@ services:
       - RECORDINGS_DIR=/recordings
       - MOCK_CAMERA=false
       - TZ=Asia/Jakarta
+      - HOMECAM_ADMIN_USERNAME=${HOMECAM_ADMIN_USERNAME:?Set HOMECAM_ADMIN_USERNAME}
+      - HOMECAM_ADMIN_PASSWORD_HASH=${HOMECAM_ADMIN_PASSWORD_HASH:?Set HOMECAM_ADMIN_PASSWORD_HASH}
+      - HOMECAM_ALLOWED_ORIGINS=${HOMECAM_ALLOWED_ORIGINS:?Set HOMECAM_ALLOWED_ORIGINS}
+      - HOMECAM_COOKIE_SECURE=${HOMECAM_COOKIE_SECURE:-true}
+      - HOMECAM_SESSION_SECONDS=${HOMECAM_SESSION_SECONDS:-28800}
 
   frontend:
     build:
       context: ./frontend
       args:
-        VITE_API_BASE_URL: https://api.rizqikevin.my.id
+        VITE_API_BASE_URL: ""
     container_name: homecam-frontend
     ports:
-      - "3005:3000"
+      - "3005:80"
     depends_on:
       - backend
     restart: unless-stopped

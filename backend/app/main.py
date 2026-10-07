@@ -22,9 +22,11 @@ from fastapi import FastAPI, HTTPException, Query, Response, Path
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
+from starlette.requests import Request
 
 from .human_motion import HumanMotionAnalyzer, Sensitivity
 from .pose_detector import PoseDetector, PoseDetectorError
+from .auth import AuthManager, AuthMiddleware, COOKIE_NAME
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -641,11 +643,17 @@ app = FastAPI(
     title="HomeCam Server",
     version="0.2.0",
     lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
+
+auth = AuthManager()
+app.add_middleware(AuthMiddleware, auth=auth)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=auth.origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -728,15 +736,23 @@ async def camera_stop():
 
 
 @app.get("/api/camera/stream")
-async def camera_stream():
+async def camera_stream(request: Request):
     """MJPEG live camera visual stream feed."""
     if camera.status != "online":
         return JSONResponse(
             status_code=503,
             content={"message": "Camera is not online", "status": camera.status},
         )
+    token = request.cookies.get(COOKIE_NAME)
+
+    def authenticated_frames():
+        for frame in camera.generate_mjpeg():
+            if not auth.valid(token):
+                break
+            yield frame
+
     return StreamingResponse(
-        camera.generate_mjpeg(),
+        authenticated_frames(),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )
 

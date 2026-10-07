@@ -1792,3 +1792,51 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* Login keeps the dashboard palette and type, with one focused form. */
+.auth-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: clamp(20px, 5vw, 48px);
+}
+
+.auth-panel {
+  width: 100%;
+  max-width: 420px;
+  padding: clamp(24px, 5vw, 36px);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+}
+
+.auth-brand { font-size: 1.2rem; font-weight: 700; margin-bottom: 28px; }
+.auth-brand span, .auth-description, .session-controls { color: var(--text-secondary); }
+.auth-brand span { font-weight: 400; }
+.auth-panel h1 { font-size: 1.8rem; line-height: 1.2; margin-bottom: 12px; }
+.auth-description { margin-bottom: 28px; }
+.auth-form { display: flex; flex-direction: column; gap: 10px; }
+.auth-form > label:not(:first-child) { margin-top: 8px; }
+.auth-form > input {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid #7c8598;
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 1.067rem;
+}
+.auth-show-password { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; }
+.auth-show-password input { width: 18px; height: 18px; accent-color: var(--accent); }
+.auth-submit.btn { min-height: 48px; margin-top: 12px; background: #2563eb; color: #fff; }
+.auth-submit.btn:hover:not(:disabled) { background: #1d4ed8; }
+.auth-retry.btn, .auth-logout.btn { min-height: 44px; background: var(--bg-input); color: var(--text-primary); border: 1px solid #7c8598; }
+.auth-retry { margin-top: 16px; width: 100%; }
+.auth-error { color: #fca5a5; overflow-wrap: anywhere; margin-block: 8px; }
+.auth-form :focus-visible, .auth-retry:focus-visible, .auth-logout:focus-visible { outline: 3px solid #93c5fd; outline-offset: 3px; }
+.auth-form :disabled, .auth-logout:disabled { opacity: 0.7; cursor: wait; }
+.session-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; margin-bottom: 20px; }
+.session-controls span { overflow-wrap: anywhere; min-width: 0; }

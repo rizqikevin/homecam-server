@@ -4,8 +4,14 @@ import Dashboard from "./pages/Dashboard";
 import Recordings from "./pages/Recordings";
 import Settings from "./pages/Settings";
 import { AppProvider } from "./context/AppContext";
+import { useAuth } from "./context/AuthContext";
+import { AuthProvider } from "./context/AuthProvider";
+import Login from "./pages/Login";
 
-function App() {
+function AuthenticatedApp() {
+  const { username, checking } = useAuth();
+  if (checking) return <main className="auth-page"><p role="status">Checking session…</p></main>;
+  if (!username) return <Login />;
   return (
     <AppProvider>
       <BrowserRouter>
@@ -19,6 +25,10 @@ function App() {
       </BrowserRouter>
     </AppProvider>
   );
+}
+
+function App() {
+  return <AuthProvider><AuthenticatedApp /></AuthProvider>;
 }
 
 export default App;
