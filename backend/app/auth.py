@@ -67,9 +67,13 @@ class AuthManager:
             with self.lock:
                 self.sessions.pop(hashlib.sha256(token.encode()).hexdigest(), None)
 
+    def revoke_all(self):
+        with self.lock:
+            self.sessions.clear()
+
     def verify(self, username: str, password: str) -> bool:
         digest = hashlib.scrypt(password.encode(), salt=self.salt, n=16384, r=8, p=1, dklen=32)
-        return hmac.compare_digest(digest, self.digest) & hmac.compare_digest(username.encode(), self.username.encode())
+        return hmac.compare_digest(digest, self.digest) and hmac.compare_digest(username.encode(), self.username.encode())
 
     def issue(self) -> str:
         token = secrets.token_urlsafe(32)
@@ -141,7 +145,7 @@ class AuthMiddleware:
             if not await asyncio.to_thread(self.auth.verify, username, password):
                 await respond(401, "Invalid username or password")
                 return
-            self.auth.revoke(token)
+            self.auth.revoke_all()
             response = JSONResponse({"username": self.auth.username}, headers={"Cache-Control": "no-store"})
             response.set_cookie(COOKIE_NAME, self.auth.issue(), max_age=self.auth.ttl, httponly=True, secure=self.auth.secure, samesite="strict", path="/api")
             await response(scope, receive, send)

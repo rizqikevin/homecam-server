@@ -112,9 +112,13 @@ export interface ServerInfo {
   };
 }
 
+export interface SessionInfo {
+  username: string;
+}
+
 export const api = {
-  getSession: () => get<{ username: string }>("/api/auth/session"),
-  login: (username: string, password: string) => post<{ username: string }>("/api/auth/login", { username, password }),
+  getSession: () => get<SessionInfo>("/api/auth/session"),
+  login: (username: string, password: string) => post<SessionInfo>("/api/auth/login", { username, password }),
   logout: () => post<{ message: string }>("/api/auth/logout"),
   getHealth: () => get<HealthStatus>("/api/health"),
   getCameraStatus: () => get<CameraStatus>("/api/camera/status"),

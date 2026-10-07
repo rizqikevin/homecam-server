@@ -1,7 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useApp } from "../context/AppContext";
 import { api } from "../api";
 import type { RecordingItem } from "../api";
+
+type SizeBucket = "Any" | "<10MB" | "10–50MB" | ">50MB";
+
+const SIZE_BUCKETS: { label: SizeBucket; test: (mb: number) => boolean }[] = [
+  { label: "Any", test: () => true },
+  { label: "<10MB", test: (mb) => mb < 10 },
+  { label: "10–50MB", test: (mb) => mb >= 10 && mb <= 50 },
+  { label: ">50MB", test: (mb) => mb > 50 },
+];
 
 export default function Recordings() {
   const { isRecording } = useApp();
@@ -12,10 +21,13 @@ export default function Recordings() {
   const [reasonFilter, setReasonFilter] = useState<string>("All");
   const [hourFrom, setHourFrom] = useState("00:00");
   const [hourTo, setHourTo] = useState("23:59");
-  const [sizeFilter, setSizeFilter] = useState<string>("Any");
+  const [sizeFilter, setSizeFilter] = useState<SizeBucket>("Any");
   const [selectedRecording, setSelectedRecording] = useState<RecordingItem | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  const fetchRecordings = async () => {
+  const fetchRecordings = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.getRecordings();
@@ -26,26 +38,31 @@ export default function Recordings() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchRecordings();
   }, []);
 
-  const handleDelete = async (filename: string, e: React.MouseEvent) => {
+  const handleDeleteRequest = (filename: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm(`Are you sure you want to delete recording "${filename}"?`)) {
-      try {
-        await api.deleteRecording(filename);
-        // Refresh the list
-        await fetchRecordings();
-        // If the deleted one was open, close it
-        if (selectedRecording?.filename === filename) {
-          setSelectedRecording(null);
-        }
-      } catch (err) {
-        alert(err instanceof Error ? err.message : "Failed to delete recording");
-      }
+    setDeleteError(null);
+    setDeleteTarget(filename);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.deleteRecording(deleteTarget);
+      if (selectedRecording?.filename === deleteTarget) setSelectedRecording(null);
+      await fetchRecordings();
+      setDeleteTarget(null);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete recording");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -66,11 +83,8 @@ export default function Recordings() {
         : recMinutes >= fromMinutes || recMinutes <= toMinutes;
 
     const mb = rec.size_bytes / (1024 * 1024);
-    const matchesSize =
-      sizeFilter === "Any" ||
-      (sizeFilter === "<10MB" && mb < 10) ||
-      (sizeFilter === "10–50MB" && mb >= 10 && mb <= 50) ||
-      (sizeFilter === ">50MB" && mb > 50);
+    const bucket = SIZE_BUCKETS.find((b) => b.label === sizeFilter) ?? SIZE_BUCKETS[0];
+    const matchesSize = bucket.test(mb);
 
     return matchesSearch && matchesReason && matchesHour && matchesSize;
   });
@@ -201,7 +215,7 @@ export default function Recordings() {
                   <span className="card-size">💾 {rec.size_label}</span>
                   <button
                     className="btn-icon-danger"
-                    onClick={(e) => handleDelete(rec.filename, e)}
+                    onClick={(e) => handleDeleteRequest(rec.filename, e)}
                     title="Delete recording"
                   >
                     🗑️
@@ -231,14 +245,13 @@ export default function Recordings() {
                   controls
                   autoPlay
                   className="playback-video-element"
-                  style={{ width: "100%", maxHeight: "360px", background: "#000" }}
                 />
               </div>
 
               <div className="playback-info-table">
                 <div className="info-row">
                   <span className="info-lbl">File Name</span>
-                  <span className="info-val" style={{ wordBreak: "break-all" }}>
+                  <span className="info-val info-val--break">
                     {selectedRecording.filename}
                   </span>
                 </div>
@@ -258,11 +271,10 @@ export default function Recordings() {
                 </div>
               </div>
 
-              <div style={{ marginTop: "20px", display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+              <div className="modal-actions">
                 <a
                   href={api.getDownloadUrl(selectedRecording.filename)}
-                  className="btn btn-primary"
-                  style={{ textDecoration: "none" }}
+                  className="btn btn-primary modal-action-link"
                   download
                 >
                   📥 Download Video
@@ -275,6 +287,65 @@ export default function Recordings() {
           </div>
         </div>
       )}
+
+      {deleteTarget && (
+        <DeleteConfirmModal
+          filename={deleteTarget}
+          error={deleteError}
+          deleting={deleting}
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => { setDeleteTarget(null); setDeleteError(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function DeleteConfirmModal({
+  filename,
+  error,
+  deleting,
+  onConfirm,
+  onCancel,
+}: {
+  filename: string;
+  error: string | null;
+  deleting: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onCancel]);
+
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div
+        className="modal-content modal-confirm"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirm-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-header">
+          <h3 id="confirm-title">Hapus rekaman?</h3>
+          <button className="btn-close" onClick={onCancel} aria-label="Batal">✕</button>
+        </div>
+        <div className="modal-body">
+          <p className="confirm-filename">{filename}</p>
+          {error && <p className="delete-error">{error}</p>}
+          <div className="modal-actions">
+            <button className="btn btn-secondary" onClick={onCancel} disabled={deleting}>
+              Batal
+            </button>
+            <button className="btn btn-danger" onClick={onConfirm} disabled={deleting} autoFocus>
+              {deleting ? "Menghapus…" : "Hapus"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

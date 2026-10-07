@@ -1,0 +1,67 @@
+STYLE DETECTION RESULT
+======================
+Analyzed: 30 commits from git log
+
+Language profile: English
+  - Dominant pattern: 27 (90%)
+
+Style: SEMANTIC
+  - Semantic (feat:, fix:, etc): 22 (73%)
+  - Plain: 5 (17%)
+  - Short: 0 (0%)
+
+Reference examples from repo:
+  1. "feat(camera): enhance camera settings management and error handling during restart"
+  2. "fix(api): update API_BASE_URL to use the production endpoint"
+  3. "feat(settings): add camera configuration options for device, resolution, and frame rate"
+
+All commits will follow: English + SEMANTIC
+
+COMMIT PLAN
+===========
+Files changed: 16 (excluding generated/docs)
+Minimum commits required: ceil(16/3) = 6
+Planned commits: 7
+Status: 7 >= 6 (PASS)
+
+COMMIT 1: feat(motion): add core human motion analysis models and logic
+  - backend/app/human_motion.py
+  - backend/tests/test_human_motion.py
+  Justification: implementation + its test for base human motion dataclasses
+
+COMMIT 2: feat(pose): add mediapipe pose landmarker detector wrapper
+  - backend/app/pose_detector.py
+  - backend/tests/test_pose_detector.py
+  - backend/models/pose_landmarker_lite.task
+  - backend/tests/fixtures/cat_and_dog.jpg
+  - backend/tests/fixtures/pose.jpg
+  Justification: implementation + tests + required assets for pose detector
+
+COMMIT 3: test(e2e): add integration tests for camera detector pipeline
+  - backend/tests/test_camera_detector_integration.py
+  - backend/tests/test_fastapi_e2e.py
+  - backend/tests/test_real_image_smoke.py
+  Justification: high-level integration and smoke tests
+
+COMMIT 4: test(cleanup): fix retention cleanup tests mocking for cv2 and mediapipe
+  - backend/tests/test_retention_cleanup.py
+  Justification: fix existing test mocking broken by new imports
+
+COMMIT 5: feat(camera): integrate pose detector into main camera capture loop
+  - backend/app/main.py
+  - backend/requirements.txt
+  Justification: core integration of pose detection into the main application + required deps
+
+COMMIT 6: feat(docker): add mediapipe dependencies and model download to container
+  - backend/Dockerfile
+  Justification: docker infrastructure changes required for the new ML pipeline
+
+COMMIT 7: feat(ui): add human detector status and diagnostics to frontend dashboard
+  - frontend/src/api.ts
+  - frontend/src/components/Layout.tsx
+  - frontend/src/index.css
+  - frontend/src/pages/Dashboard.tsx
+  - frontend/src/pages/Settings.tsx
+  Justification: frontend changes all related to surfacing detector status
+
+Execution order: Commit 1 -> Commit 2 -> Commit 3 -> Commit 4 -> Commit 5 -> Commit 6 -> Commit 7

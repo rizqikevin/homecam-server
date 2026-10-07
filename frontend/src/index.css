@@ -1890,3 +1890,52 @@ body {
 .auth-form :disabled, .auth-logout:disabled { opacity: 0.7; cursor: wait; }
 .session-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; margin-bottom: 20px; }
 .session-controls span { overflow-wrap: anywhere; min-width: 0; }
+
+/* Playback video element */
+.playback-video-element {
+  width: 100%;
+  max-height: 360px;
+  display: block;
+  background: #000;
+}
+
+/* info-val word-break modifier */
+.info-val--break {
+  word-break: break-all;
+}
+
+/* Modal bottom action row */
+.modal-actions {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* Download link styled as button */
+.modal-action-link {
+  text-decoration: none;
+}
+
+/* Compact confirm dialog */
+.modal-confirm {
+  max-width: 420px;
+}
+
+.confirm-filename {
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  overflow-wrap: break-word;
+  margin-bottom: 12px;
+}
+
+.delete-error {
+  color: var(--red);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
