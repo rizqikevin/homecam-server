@@ -949,6 +949,56 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
+.recordings-toolbar {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.filter-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 4px 12px;
+}
+
+.filter-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.filter-sep {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.input-time {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.input-time::-webkit-calendar-picker-indicator {
+  filter: invert(0.5);
+  cursor: pointer;
+}
+
 .recordings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));

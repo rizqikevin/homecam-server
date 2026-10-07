@@ -10,6 +10,9 @@ export default function Recordings() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [reasonFilter, setReasonFilter] = useState<string>("All");
+  const [hourFrom, setHourFrom] = useState("00:00");
+  const [hourTo, setHourTo] = useState("23:59");
+  const [sizeFilter, setSizeFilter] = useState<string>("Any");
   const [selectedRecording, setSelectedRecording] = useState<RecordingItem | null>(null);
 
   const fetchRecordings = async () => {
@@ -50,7 +53,26 @@ export default function Recordings() {
     const matchesSearch = rec.filename.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesReason =
       reasonFilter === "All" || rec.type.toLowerCase() === reasonFilter.toLowerCase();
-    return matchesSearch && matchesReason;
+
+    const recDate = new Date(rec.created_at);
+    const recMinutes = recDate.getHours() * 60 + recDate.getMinutes();
+    const [fH, fM] = hourFrom.split(":").map(Number);
+    const [tH, tM] = hourTo.split(":").map(Number);
+    const fromMinutes = fH * 60 + fM;
+    const toMinutes = tH * 60 + tM;
+    const matchesHour =
+      fromMinutes <= toMinutes
+        ? recMinutes >= fromMinutes && recMinutes <= toMinutes
+        : recMinutes >= fromMinutes || recMinutes <= toMinutes;
+
+    const mb = rec.size_bytes / (1024 * 1024);
+    const matchesSize =
+      sizeFilter === "Any" ||
+      (sizeFilter === "<10MB" && mb < 10) ||
+      (sizeFilter === "10–50MB" && mb >= 10 && mb <= 50) ||
+      (sizeFilter === ">50MB" && mb > 50);
+
+    return matchesSearch && matchesReason && matchesHour && matchesSize;
   });
 
   return (
@@ -68,7 +90,7 @@ export default function Recordings() {
       )}
 
       {/* Filters Toolbar */}
-      <div className="toolbar">
+      <div className="toolbar recordings-toolbar">
         <div className="search-box">
           <span className="search-icon">🔍</span>
           <input
@@ -104,6 +126,39 @@ export default function Recordings() {
           >
             Schedule
           </button>
+        </div>
+
+        <div className="filter-row">
+          <div className="filter-inline">
+            <label className="filter-label">🕐 Jam</label>
+            <input
+              type="time"
+              className="input-time"
+              value={hourFrom}
+              onChange={(e) => setHourFrom(e.target.value)}
+              title="Dari jam"
+            />
+            <span className="filter-sep">–</span>
+            <input
+              type="time"
+              className="input-time"
+              value={hourTo}
+              onChange={(e) => setHourTo(e.target.value)}
+              title="Sampai jam"
+            />
+          </div>
+
+          <div className="filter-group">
+            {(["Any", "<10MB", "10–50MB", ">50MB"] as const).map((bucket) => (
+              <button
+                key={bucket}
+                className={`btn-tab ${sizeFilter === bucket ? "active" : ""}`}
+                onClick={() => setSizeFilter(bucket)}
+              >
+                {bucket}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
