@@ -55,7 +55,7 @@ Production uses Nginx on container port `80`, serving the bundle and proxying `/
 
 Login protects camera status, streams, recordings, settings, and diagnostics. `/api/health` remains public; API documentation endpoints are disabled. There is one administrator account, with no registration or password-reset endpoint.
 
-From the repository root, generate a salted scrypt hash with a hidden password prompt:
+From the repository root, generate a salted scrypt hash with a hidden password prompt. This command uses only Python's standard library (with `hashlib.scrypt` support); FastAPI and Starlette are not required. Backend dependencies are still required to run the server:
 
 ```bash
 python3 -m backend.app.auth

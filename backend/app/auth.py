@@ -1,5 +1,7 @@
 """Single-admin authentication with process-local, revocable cookie sessions."""
 
+from __future__ import annotations
+
 import asyncio
 import hashlib
 import hmac
@@ -11,8 +13,6 @@ import time
 from collections import deque
 from urllib.parse import urlsplit
 
-from starlette.requests import Request
-from starlette.responses import JSONResponse
 
 COOKIE_NAME = "homecam_session"
 
@@ -98,6 +98,9 @@ class AuthMiddleware:
         self.auth = auth
 
     async def __call__(self, scope, receive, send):
+        from starlette.requests import Request
+        from starlette.responses import JSONResponse
+
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
