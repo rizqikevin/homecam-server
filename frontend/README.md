@@ -21,6 +21,8 @@ This is the lightweight Progressive Web App (PWA) dashboard for HomeCam Server, 
 - **Service Worker**: Static shell is cached; all `/api/` requests use the network and never fall back to cached private data.
 - **PWA Manifest**: Configured in `public/manifest.webmanifest`.
 - **API Proxy/Target**: `src/api.ts` defaults to same-origin `/api`. Vite proxies to `127.0.0.1:8005`; production Nginx proxies to the backend container. Optional `VITE_API_BASE_URL` must be a same-site API origin because session cookies use `SameSite=Strict`.
+- **Application State**: `src/context/AppContext.ts` exports the context, types, and `useApp` hook; `AppProvider.tsx` exports only the provider component for Fast Refresh. Status polling runs every two seconds. API completion handlers settle loading and error state; user refresh actions start loading before requesting data.
+- **Recording Lifecycle**: The dashboard resets its local elapsed timer whenever recording starts or stops and clears its one-second interval on stop or unmount. Elapsed time measures the session observed by the dashboard, not the recording's age on the server. The recordings page loads on mount and refreshes after deletion, retaining loading, empty, and error states.
 
 ## Development & Build
 
@@ -42,6 +44,12 @@ pnpm run dev
 ```bash
 pnpm run build
 ```
+
+### Frontend lifecycle smoke checks
+
+After `npm run lint` and `npm run build`, check status refresh and offline recovery, recording start/stop/restart (elapsed time resets to `00:00`), and recordings loading, deletion, empty, and error states. Use a fresh browser origin or unregister an old service worker when checking development changes so a cached shell cannot mask the current source.
+
+These flows were exercised in Chromium with API response fixtures on 2026-10-08, including a held status response to check loading and failed status/list responses to check error recovery. No browser runtime errors were recorded. Fixtures verify frontend transitions only; real camera streaming, authentication enforcement, recording persistence, and backend deletion still need a live-backend check.
 
 ## Docker Production Deployment
 

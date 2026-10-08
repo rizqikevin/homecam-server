@@ -27,22 +27,23 @@ export default function Recordings() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const fetchRecordings = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.getRecordings();
-      setRecordings(res.items);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load recordings");
-    } finally {
-      setLoading(false);
-    }
+  const fetchRecordings = useCallback(() => {
+    return api.getRecordings().then(
+      (res) => {
+        setRecordings(res.items);
+        setError(null);
+        setLoading(false);
+      },
+      (err: unknown) => {
+        setError(err instanceof Error ? err.message : "Failed to load recordings");
+        setLoading(false);
+      },
+    );
   }, []);
 
   useEffect(() => {
-    fetchRecordings();
-  }, []);
+    void fetchRecordings();
+  }, [fetchRecordings]);
 
   const handleDeleteRequest = (filename: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -57,6 +58,7 @@ export default function Recordings() {
     try {
       await api.deleteRecording(deleteTarget);
       if (selectedRecording?.filename === deleteTarget) setSelectedRecording(null);
+      setLoading(true);
       await fetchRecordings();
       setDeleteTarget(null);
     } catch (err) {

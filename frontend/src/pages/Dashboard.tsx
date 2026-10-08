@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useApp } from "../context/AppContext";
 import { api } from "../api";
 
@@ -18,28 +18,19 @@ export default function Dashboard() {
   const [actionLoading, setActionLoading] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [wasRecording, setWasRecording] = useState(isRecording);
 
-  // Handle Recording Timer
+  if (wasRecording !== isRecording) {
+    setWasRecording(isRecording);
+    setRecordingSeconds(0);
+  }
+
   useEffect(() => {
-    if (isRecording) {
-      setRecordingSeconds(0);
-      recordingIntervalRef.current = setInterval(() => {
-        setRecordingSeconds((prev) => prev + 1);
-      }, 1000);
-    } else {
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-        recordingIntervalRef.current = null;
-      }
-      setRecordingSeconds(0);
-    }
-
-    return () => {
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-      }
-    };
+    if (!isRecording) return;
+    const interval = setInterval(() => {
+      setRecordingSeconds((seconds) => seconds + 1);
+    }, 1000);
+    return () => clearInterval(interval);
   }, [isRecording]);
 
   const handleStartCamera = async () => {

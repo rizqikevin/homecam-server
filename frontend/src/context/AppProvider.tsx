@@ -1,44 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { api } from "../api";
 import type { CameraStatus, HealthStatus, SettingsData, ServerInfo } from "../api";
 
-export interface BeforeInstallPromptEvent extends Event {
-  readonly platforms: string[];
-  readonly userChoice: Promise<{
-    outcome: "accepted" | "dismissed";
-    platform: string;
-  }>;
-  prompt(): Promise<void>;
-}
-
-interface AppContextType {
-  health: HealthStatus | null;
-  camera: CameraStatus | null;
-  serverInfo: ServerInfo | null;
-  settings: SettingsData | null;
-  backendOnline: boolean;
-  cameraOnline: boolean;
-  isRecording: boolean;
-  motionDetected: boolean;
-  loading: boolean;
-  error: string | null;
-  deferredPrompt: BeforeInstallPromptEvent | null;
-  isInstallable: boolean;
-  promptInstall: () => void;
-  updateSettings: (newSettings: Partial<SettingsData>) => Promise<void>;
-  triggerRefresh: () => Promise<void>;
-  fetchServerInfo: () => Promise<void>;
-}
-
-const AppContext = createContext<AppContextType | undefined>(undefined);
-
-export const useApp = () => {
-  const context = useContext(AppContext);
-  if (!context) {
-    throw new Error("useApp must be used within an AppProvider");
-  }
-  return context;
-};
+import { AppContext, type BeforeInstallPromptEvent } from "./AppContext";
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [health, setHealth] = useState<HealthStatus | null>(null);
@@ -59,17 +23,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isInstallable, setIsInstallable] = useState<boolean>(false);
 
   // Load initial settings and server info
-  const loadInitialData = useCallback(async () => {
-    try {
-      const [s, info] = await Promise.all([
-        api.getSettings(),
-        api.getServerInfo()
-      ]);
-      setSettings(s);
-      setServerInfo(info);
-    } catch (err) {
-      logger.error("Failed to load settings or server info:", err);
-    }
+  const loadInitialData = useCallback(() => {
+    return Promise.all([api.getSettings(), api.getServerInfo()]).then(
+      ([settings, info]) => {
+        setSettings(settings);
+        setServerInfo(info);
+      },
+      (err: unknown) => {
+        console.error("[AppContext] Failed to load settings or server info:", err);
+      },
+    );
   }, []);
 
   const fetchServerInfo = useCallback(async () => {
@@ -82,30 +45,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   // Poll camera/health status
-  const fetchStatus = useCallback(async () => {
-    try {
-      const [h, c] = await Promise.all([
-        api.getHealth(),
-        api.getCameraStatus(),
-      ]);
-      setHealth(h);
-      setCamera(c);
-      setBackendOnline(true);
-      setCameraOnline(c.status === "online");
-      setIsRecording(c.recording);
-      setMotionDetected(c.motion_detected);
-      setError(null);
-    } catch (err) {
-      setHealth(null);
-      setCamera(null);
-      setBackendOnline(false);
-      setCameraOnline(false);
-      setIsRecording(false);
-      setMotionDetected(false);
-      setError(err instanceof Error ? err.message : "Backend connection lost");
-    } finally {
-      setLoading(false);
-    }
+  const fetchStatus = useCallback(() => {
+    return Promise.all([api.getHealth(), api.getCameraStatus()]).then(
+      ([h, c]) => {
+        setHealth(h);
+        setCamera(c);
+        setBackendOnline(true);
+        setCameraOnline(c.status === "online");
+        setIsRecording(c.recording);
+        setMotionDetected(c.motion_detected);
+        setError(null);
+        setLoading(false);
+      },
+      (err: unknown) => {
+        setHealth(null);
+        setCamera(null);
+        setBackendOnline(false);
+        setCameraOnline(false);
+        setIsRecording(false);
+        setMotionDetected(false);
+        setError(err instanceof Error ? err.message : "Backend connection lost");
+        setLoading(false);
+      },
+    );
   }, []);
 
   const triggerRefresh = useCallback(async () => {
@@ -115,7 +77,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Run on mount
   useEffect(() => {
-    // Call checkers directly instead of triggerRefresh() to avoid setting loading=true synchronously on mount
     fetchStatus();
     loadInitialData();
     
@@ -164,12 +125,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsInstallable(false);
       });
     }
-  };
-
-  // Add logger support for context debugging
-  const logger = {
-    error: (...args: unknown[]) => console.error("[AppContext]", ...args),
-    info: (...args: unknown[]) => console.log("[AppContext]", ...args)
   };
 
   return (

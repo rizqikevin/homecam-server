@@ -3,7 +3,7 @@ import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Recordings from "./pages/Recordings";
 import Settings from "./pages/Settings";
-import { AppProvider } from "./context/AppContext";
+import { AppProvider } from "./context/AppProvider";
 import { useAuth } from "./context/AuthContext";
 import { AuthProvider } from "./context/AuthProvider";
 import Login from "./pages/Login";
