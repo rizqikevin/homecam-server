@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# HomeCam Server — Self-hosted runner & CI secrets setup wizard.
+# HomeCam Server self-hosted runner setup wizard.
 # Run this on the production server (robot@192.168.1.10) or any machine
 # with SSH access.
 #
@@ -186,14 +186,14 @@ finish() {
 # STAGES: author this section. One stage() per step the human takes.
 # ──────────────────────────────────────────────────────────────────────────
 
-TOTAL_STAGES=5
+TOTAL_STAGES=4
 
 banner "HomeCam CI/CD Setup"
 
 # ── Stage 1: Verify prerequisites ────────────────────────────────────────
 
 stage "Check prerequisites"
-say "Checking Docker, Compose, and gh CLI on this machine..."
+say "Checking Docker, Compose, and optional gh CLI on this machine..."
 say ""
 
 ERRORS=0
@@ -216,12 +216,10 @@ if command -v gh >/dev/null 2>&1; then
   if gh auth status >/dev/null 2>&1; then
     step "gh authenticated ✓"
   else
-    warn "gh not authenticated — run: gh auth login"
-    ERRORS=$((ERRORS + 1))
+    note "gh not authenticated; runner verification will use the browser."
   fi
 else
-  warn "gh CLI not found — install from https://cli.github.com"
-  warn "Without gh, you must set GitHub secrets manually."
+  note "gh CLI not found; runner verification will use the browser."
 fi
 
 if [ "$ERRORS" -gt 0 ]; then
@@ -234,43 +232,7 @@ fi
 
 pause
 
-# ── Stage 2: Generate CI password hash ──────────────────────────────────
-
-stage "Generate CI_PASSWORD_HASH"
-say "CI tests need a password hash for the test admin user."
-say "We'll generate one using the backend container."
-say ""
-
-if docker ps --format '{{.Names}}' | grep -q '^homecam-backend$'; then
-  step "Backend container is running — generating hash..."
-  CI_HASH=$(docker exec homecam-backend python3 -c "
-import hashlib, os
-salt = os.urandom(16).hex()
-dk = hashlib.scrypt(b'ci-test-password', salt=salt.encode(), n=16384, r=8, p=1, dklen=32)
-print(f'scrypt:{salt}:{dk.hex()}')
-" 2>/dev/null || echo "")
-
-  if [ -n "$CI_HASH" ]; then
-    step "Generated: ${CI_HASH:0:20}..."
-    note "This hash corresponds to the password 'ci-test-password'"
-    note "(only used in CI, never in production)"
-  else
-    warn "Failed to generate hash from container."
-    ask CI_HASH "Paste a scrypt hash manually (format scrypt:SALT:HASH):"
-  fi
-else
-  warn "Backend container not running. Generate a hash manually:"
-  say "  docker exec homecam-backend python3 -c \\"
-  say "    \"import hashlib, os; salt=os.urandom(16).hex(); dk=hashlib.scrypt(b'ci-test-password', salt=salt.encode(), n=16384, r=8, p=1, dklen=32); print(f'scrypt:{salt}:{dk.hex()}')\""
-  ask CI_HASH "Paste the hash:"
-fi
-
-if [ -n "${CI_HASH:-}" ]; then
-  set_secret CI_PASSWORD_HASH "$CI_HASH"
-fi
-pause
-
-# ── Stage 3: Create GitHub Environment ───────────────────────────────────
+# ── Stage 2: Create GitHub Environment ───────────────────────────────────
 
 stage "Create GitHub Environment 'production'"
 say "This environment serializes deploys (one at a time)."
@@ -286,7 +248,7 @@ say ""
 note "This prevents deploys from feature branches and serializes production deploys."
 pause "Done configuring the environment?"
 
-# ── Stage 4: Register self-hosted runner ─────────────────────────────────
+# ── Stage 3: Register self-hosted runner ─────────────────────────────────
 
 stage "Register self-hosted runner"
 say "The runner connects outbound to GitHub — no ports to open."
@@ -327,7 +289,7 @@ say ""
 
 pause "Runner service running?"
 
-# ── Stage 5: Verify runner is online ─────────────────────────────────────
+# ── Stage 4: Verify runner is online ─────────────────────────────────────
 
 stage "Verify"
 say "Let's check everything is connected."
@@ -351,6 +313,7 @@ say ""
 step "Test: push a commit or trigger a manual deploy from the Actions tab."
 say ""
 note "CI runs on GitHub-hosted runners (automatic)."
+note "CI generates disposable test credentials automatically; no CI password secret is needed."
 note "Deploy runs on your self-hosted runner after CI passes on main."
 note ""
 note "deploy.sh checks for active recordings before restarting containers."

@@ -649,6 +649,7 @@ app = FastAPI(
 )
 
 auth = AuthManager()
+app.add_middleware(AuthMiddleware, auth=auth)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=auth.origins,
@@ -656,7 +657,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(AuthMiddleware, auth=auth)
 
 # Helpers
 def get_size_label(size_bytes: int) -> str:

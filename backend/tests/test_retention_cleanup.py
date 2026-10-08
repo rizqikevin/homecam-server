@@ -7,6 +7,7 @@ import tempfile
 import time
 import types
 import unittest
+from unittest.mock import patch
 
 
 class FakeBaseModel:
@@ -310,8 +311,11 @@ class RetentionCleanupTests(unittest.TestCase):
             main.cv2.VideoCapture = FakeCapture
 
             camera = main.CameraManager()
-            self.assertTrue(camera.start())
-            camera.stop()
+            with patch.dict(os.environ, {"MOCK_CAMERA": "false"}):
+                try:
+                    self.assertTrue(camera.start())
+                finally:
+                    camera.stop()
 
         self.assertEqual(
             set_calls[:4],

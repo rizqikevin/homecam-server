@@ -125,3 +125,13 @@ Sessions use opaque HttpOnly cookies and expire after eight hours by default (co
 Login is limited to ten attempts per minute across this single-admin server. For public exposure, also apply network-level access controls and rate limits at your HTTPS reverse proxy. A shared limit can temporarily block legitimate login after repeated attempts. Cross-site frontend/API hosting is not supported; deploy same-origin or same-site HTTPS hosts with exact allowed origins.
 
 The login page retains the dark CCTV palette and Inter typography to match the dashboard, with one centered form and a blue sign-in action. Spacing separates credentials from feedback; native labels and focus rings keep keyboard use clear. Design dials: energy 1, rhythm 1, motion 1. No additional illustrations or animation.
+
+## Backend CI tests
+
+The backend CI job installs `pytest==8.3.5` and `httpx==0.28.1` alongside `backend/requirements.txt`. These test dependencies are not included in the production image. HTTPX is required by FastAPI's `TestClient`.
+
+Before pytest starts, CI calls `app.auth.hash_password` from the backend directory and writes a fresh hash to `GITHUB_ENV`. The test credentials are `test-admin` / `test-password-only`, matching `backend/tests/test_fastapi_e2e.py`. They are disposable test credentials, not production credentials. CI needs no password-hash repository secret. Production password-hash validation and the administrator setup above are unchanged.
+
+`scripts/setup-runner.sh` has four stages: check prerequisites, create the production environment, register the self-hosted runner, and verify the runner. It no longer asks for a CI password hash. The optional GitHub CLI supports runner verification; without it, use the browser instructions.
+
+CORS wraps authentication responses so allowed origins receive CORS headers on login and authentication errors as well as API responses. CI runs with `MOCK_CAMERA=true`; the capture-configuration test locally disables mock mode to exercise its fake capture device and verify MJPG is requested before the HD resolution.

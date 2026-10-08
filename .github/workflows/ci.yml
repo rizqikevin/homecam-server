@@ -21,8 +21,19 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        # Keep the test runner out of the production image dependencies.
-        run: python -m pip install -r backend/requirements.txt pytest==8.3.5
+        # Keep test dependencies out of the production image.
+        run: python -m pip install -r backend/requirements.txt pytest==8.3.5 httpx==0.28.1
+
+      - name: Generate test password hash
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import os
+          from app.auth import hash_password
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(f"HOMECAM_ADMIN_PASSWORD_HASH={hash_password('test-password-only')}\n")
+          PY
 
       - name: Run tests
         run: |
@@ -36,8 +47,7 @@ jobs:
         env:
           MOCK_CAMERA: "true"
           POSE_MODEL_PATH: backend/models/pose_landmarker_lite.task
-          HOMECAM_ADMIN_USERNAME: ci-admin
-          HOMECAM_ADMIN_PASSWORD_HASH: ${{ secrets.CI_PASSWORD_HASH }}
+          HOMECAM_ADMIN_USERNAME: test-admin
           HOMECAM_ALLOWED_ORIGINS: http://testserver
           HOMECAM_COOKIE_SECURE: "false"
 
